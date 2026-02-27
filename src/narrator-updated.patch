@@ -1,0 +1,8 @@
+// Replace the Anthropic import line with:
+const { generateNarration: generateNarrationLLM } = require('./llm-provider');
+
+// In the narrate() method, replace this line:
+//   const response = await this.client.messages.create({...
+// With:
+//   const narration = await generateNarrationLLM(codeChange.after, this.currentLanguage, this.currentTone);
+

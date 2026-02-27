@@ -1,0 +1,85 @@
+{
+  "name": "narrator-ide",
+  "displayName": "Narrator IDE",
+  "description": "AI narration of your coding process with language-specific personas",
+  "version": "1.0.0",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": ["Other", "Debuggers"],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "narrator.toggleNarration",
+        "title": "Toggle Narration",
+        "category": "Narrator"
+      },
+      {
+        "command": "narrator.nextPersona",
+        "title": "Next Persona",
+        "category": "Narrator"
+      },
+      {
+        "command": "narrator.previousPersona",
+        "title": "Previous Persona",
+        "category": "Narrator"
+      },
+      {
+        "command": "narrator.nextTone",
+        "title": "Next Tone",
+        "category": "Narrator"
+      },
+      {
+        "command": "narrator.setServerUrl",
+        "title": "Set Server URL",
+        "category": "Narrator"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "narrator.toggleNarration",
+        "key": "ctrl+shift+n",
+        "mac": "cmd+shift+n"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "narrator-sidebar",
+          "title": "Narrator IDE",
+          "icon": "resources/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "narrator-sidebar": [
+        {
+          "id": "narratorControls",
+          "name": "Narration Controls"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/node": "20.x",
+    "@types/vscode": "^1.80.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.40.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "ws": "^8.14.0"
+  }
+}
