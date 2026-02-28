@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=5.0, user-scalable=yes">
+  <title>Narrator IDE - AI Code Narration</title>
+  <link rel="stylesheet" href="css/modern.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- TOP BAR (Modern Cascade-style) -->
+    <header class="top-bar">
+      <!-- Left: Logo + Title -->
+      <div class="top-bar-left">
+        <div class="logo-section">
+          <span class="logo-icon">🎙️</span>
+          <h1 class="app-title">Narrator IDE</h1>
+        </div>
+      </div>
+
+      <!-- File Tabs (Multi-file support) -->
+      <div class="file-tabs" id="fileTabs">
+        <button class="file-tab active" data-file="default">
+          <span>untitled.js</span>
+          <button class="file-tab-close">×</button>
+        </button>
+      </div>
+
+      <!-- Right: Status + Persona + Controls -->
+      <div class="top-bar-right">
+        <!-- Connection Status -->
+        <div class="connection-status">
+          <span class="status-dot connected" id="statusDot"></span>
+          <span class="status-text" id="connectionStatus">Ready</span>
+        </div>
+
+        <!-- Provider Badge -->
+        <div class="provider-badge" id="providerBadge">Claude</div>
+
+        <!-- Persona Indicator (Active persona with glow) -->
+        <div class="persona-indicator active" id="personaIndicator">
+          <span id="personaName">JavaScript</span>
+          <span id="personaEmoji">⚡</span>
+        </div>
+
+        <!-- Icon Buttons -->
+        <button class="icon-btn" id="commandBtn" title="Commands (Ctrl+Shift+P)">⌘</button>
+        <button class="icon-btn" id="narrationToggle" title="Toggle narration (Ctrl+Shift+N)">🎙️</button>
+        <button class="icon-btn" id="settingsBtn" title="Settings">⚙️</button>
+      </div>
+    </header>
+
+    <!-- MAIN GRID (3-column: Controls | Editor | Narration) -->
+    <div class="main-grid">
+      <!-- LEFT SIDEBAR: Controls -->
+      <aside class="sidebar sidebar-left" id="sidebarLeft">
+        <div class="sidebar-header">
+          <h2>Controls</h2>
+        </div>
+        <div class="sidebar-content">
+          <!-- Persona Selector -->
+          <div class="control-group">
+            <label class="control-label">Persona</label>
+            <select id="personaSelect" class="control-select">
+              <option value="">Loading...</option>
+            </select>
+            <div id="personaDescription" class="control-description"></div>
+          </div>
+
+          <!-- Tone Selector -->
+          <div class="control-group">
+            <label class="control-label">Tone</label>
+            <select id="toneSelect" class="control-select">
+              <option value="">Loading...</option>
+            </select>
+            <div id="toneDescription" class="control-description"></div>
+          </div>
+
+          <!-- Language Info -->
+          <div class="control-group">
+            <label class="control-label">Language</label>
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+              <span id="detectedLanguage" class="control-select" style="flex: 1; cursor: default; text-align: center;">auto</span>
+            </div>
+          </div>
+
+          <!-- Narration Toggle -->
+          <div class="control-group">
+            <label class="control-label">Narration</label>
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+              <input type="checkbox" id="narrationEnabled" checked style="width: auto;">
+              <span id="narrationStatusText" style="flex: 1; color: var(--text-1);">Enabled</span>
+            </div>
+          </div>
+
+          <!-- Metrics -->
+          <div class="metrics-box">
+            <h3 class="metrics-title">Metrics</h3>
+            <div class="metric-row">
+              <span class="metric-label">Response Time:</span>
+              <span class="metric-value" id="responseTime">–</span>
+            </div>
+            <div class="metric-row">
+              <span class="metric-label">Last Narrated:</span>
+              <span class="metric-value" id="lastNarrated">never</span>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- CENTER: Code Editor -->
+      <main class="editor-container" id="editorContainer">
+        <div id="editor" class="monaco-editor"></div>
+        <div class="editor-footer">
+          <span id="editorStatus" style="color: var(--text-2);">Ready</span>
+          <span id="editorPos" style="color: var(--text-2);">Ln 1, Col 1</span>
+        </div>
+      </main>
+
+      <!-- RIGHT SIDEBAR: Narration (Cascade-style Agent Panel) -->
+      <aside class="sidebar sidebar-right" id="sidebarRight">
+        <div class="sidebar-header">
+          <h2>Agent Log</h2>
+          <span id="thinkingStatus" style="display: none;">
+            <div class="thinking-indicator">
+              <span class="thinking-dot"></span>
+              <span class="thinking-dot"></span>
+              <span class="thinking-dot"></span>
+            </div>
+          </span>
+        </div>
+        <div class="sidebar-content">
+          <!-- Live Narration (Glass Card) -->
+          <div class="narration-section">
+            <h3 class="section-title">Current</h3>
+            <div class="live-narration glass-card" id="liveNarration">
+              <div class="empty-state">👂 Waiting for code...</div>
+            </div>
+          </div>
+
+          <!-- History (Card-based with Avatars, Scrollable Agent Log) -->
+          <div class="narration-section">
+            <h3 class="section-title">History</h3>
+            <div class="narration-history" id="narrationHistory">
+              <div class="empty-state">No narrations yet</div>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <!-- BOTTOM PANEL (Resizable, with tabs) -->
+    <div id="bottomPanel" style="display: flex; flex-direction: column; height: 200px; flex-shrink: 0;">
+      <div class="bottom-panel-splitter" id="bottomSplitter"></div>
+      
+      <div class="bottom-panel-tabs">
+        <button class="bottom-tab active" data-tab="problems">Problems</button>
+        <button class="bottom-tab" data-tab="queue">Queue</button>
+        <button class="bottom-tab" data-tab="terminal">Terminal</button>
+      </div>
+
+      <div class="bottom-panel-content">
+        <!-- Problems Tab -->
+        <div id="problems-panel" class="bottom-tab-panel active">
+          <div class="empty-state">No problems detected</div>
+        </div>
+
+        <!-- Queue Tab -->
+        <div id="queue-panel" class="bottom-tab-panel" style="display: none;">
+          <div class="empty-state">Narration queue is empty</div>
+        </div>
+
+        <!-- Terminal Tab -->
+        <div id="terminal-panel" class="bottom-tab-panel" style="display: none;">
+          <div class="empty-state">Terminal output will appear here</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- COMMAND PALETTE (Cmd+Shift+P) -->
+  <div class="command-palette" id="commandPalette">
+    <div class="command-palette-box">
+      <input type="text" class="command-input" id="commandInput" placeholder="Type a command...">
+      <div class="command-list" id="commandList"></div>
+    </div>
+  </div>
+
+  <!-- Monaco Editor -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
+  <script>
+    require.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' } });
+  </script>
+
+  <!-- App Scripts -->
+  <script src="js/app-modern.js"></script>
+  <script src="js/command-palette.js"></script>
+  <script src="js/bottom-panel.js"></script>
+  <script src="js/websocket.js"></script>
+</body>
+</html>

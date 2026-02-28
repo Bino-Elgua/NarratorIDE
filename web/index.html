@@ -2,869 +2,266 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0">
-  <title>Narrator IDE</title>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/xterm/5.3.0/xterm.min.css" />
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-      -webkit-tap-highlight-color: transparent;
-    }
-
-    html, body {
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-    }
-
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-      background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-      color: #e2e8f0;
-      display: flex;
-      flex-direction: column;
-      touch-action: manipulation;
-      overflow: hidden;
-    }
-
-    /* MAIN LAYOUT */
-    .app-container {
-      display: flex;
-      flex-direction: column;
-      height: 100vh;
-      width: 100vw;
-      overflow: hidden;
-    }
-
-    .app-main {
-      display: flex;
-      flex: 1;
-      overflow: hidden;
-      min-height: 0;
-    }
-
-    .content-wrapper {
-      display: flex;
-      flex-direction: column;
-      flex: 1;
-      overflow: hidden;
-      min-height: 0;
-    }
-
-    /* TERMINAL PANEL */
-    .terminal-panel {
-      background: #0f172a;
-      border-top: 1px solid rgba(148, 163, 184, 0.2);
-      display: flex;
-      flex-direction: column;
-      height: 200px;
-      flex-shrink: 0;
-      z-index: 10;
-    }
-
-    .terminal-header {
-      background: rgba(15, 23, 42, 0.95);
-      padding: 0.5rem 1rem;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      border-bottom: 1px solid rgba(148, 163, 184, 0.2);
-      font-size: 0.85rem;
-      color: #94a3b8;
-      flex-shrink: 0;
-    }
-
-    .terminal-header-title {
-      font-weight: 500;
-    }
-
-    .terminal-controls {
-      display: flex;
-      gap: 0.5rem;
-    }
-
-    .terminal-btn {
-      background: none;
-      border: none;
-      color: #94a3b8;
-      cursor: pointer;
-      padding: 0.25rem 0.5rem;
-      font-size: 0.8rem;
-      transition: color 0.2s;
-    }
-
-    .terminal-btn:hover {
-      color: #60a5fa;
-    }
-
-    .terminal-content {
-      flex: 1;
-      overflow: hidden;
-      font-family: 'Monaco', 'Courier New', monospace;
-      font-size: 0.85rem;
-    }
-
-    .terminal-resizer {
-      width: 100%;
-      height: 4px;
-      background: rgba(96, 165, 250, 0.1);
-      cursor: ns-resize;
-      transition: background 0.2s;
-      flex-shrink: 0;
-      user-select: none;
-    }
-
-    .terminal-resizer:hover {
-      background: rgba(96, 165, 250, 0.3);
-    }
-
-    .terminal-resizer.dragging {
-      background: rgba(96, 165, 250, 0.6);
-    }
-
-    /* HEADER */
-    .header {
-      background: rgba(15, 23, 42, 0.95);
-      border-bottom: 1px solid rgba(148, 163, 184, 0.2);
-      padding: 1rem;
-      flex-shrink: 0;
-      backdrop-filter: blur(10px);
-    }
-
-    .header-title {
-      font-size: 1.3rem;
-      font-weight: 600;
-      background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-      margin-bottom: 0.5rem;
-    }
-
-    .connection-status {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      font-size: 0.8rem;
-    }
-
-    .status-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: #ef4444;
-      animation: pulse 2s infinite;
-    }
-
-    .status-dot.connected {
-      background: #10b981;
-      animation: none;
-    }
-
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.5; }
-    }
-
-    /* TABS */
-    .tabs {
-      display: flex;
-      gap: 0;
-      border-bottom: 1px solid rgba(148, 163, 184, 0.2);
-      background: rgba(15, 23, 42, 0.8);
-      flex-shrink: 0;
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
-    }
-
-    .tab {
-      flex: 1;
-      min-width: 80px;
-      padding: 0.75rem 1rem;
-      background: transparent;
-      border: none;
-      color: #94a3b8;
-      cursor: pointer;
-      font-size: 0.85rem;
-      font-weight: 500;
-      border-bottom: 2px solid transparent;
-      transition: all 0.2s ease;
-      white-space: nowrap;
-    }
-
-    .tab.active {
-      color: #60a5fa;
-      border-bottom-color: #60a5fa;
-      background: rgba(96, 165, 250, 0.05);
-    }
-
-    /* CONTENT AREA */
-    .content {
-      flex: 1;
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
-      padding: 1rem;
-      display: none;
-    }
-
-    .content.active {
-      display: block;
-    }
-
-    /* STATUS SECTION */
-    .status-card {
-      background: rgba(59, 130, 246, 0.1);
-      border: 1px solid rgba(96, 165, 250, 0.2);
-      border-left: 4px solid #3b82f6;
-      border-radius: 8px;
-      padding: 1rem;
-      margin-bottom: 1rem;
-    }
-
-    .status-item {
-      display: flex;
-      justify-content: space-between;
-      padding: 0.4rem 0;
-      font-size: 0.9rem;
-    }
-
-    .status-item strong {
-      color: #60a5fa;
-    }
-
-    /* NARRATION BOX */
-    .narration-box {
-      background: rgba(30, 41, 59, 0.8);
-      border: 1px solid rgba(96, 165, 250, 0.2);
-      border-radius: 8px;
-      padding: 1rem;
-      margin-bottom: 1rem;
-      display: flex;
-      flex-direction: column;
-      gap: 0.5rem;
-    }
-
-    .narration-text {
-      font-style: italic;
-      color: #cbd5e1;
-      line-height: 1.5;
-      font-size: 0.95rem;
-    }
-
-    .narration-meta {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 0.75rem;
-      color: #94a3b8;
-      gap: 0.5rem;
-    }
-
-    .persona-badge {
-      background: rgba(99, 102, 241, 0.2);
-      color: #a5b4fc;
-      padding: 0.25rem 0.5rem;
-      border-radius: 4px;
-      font-size: 0.75rem;
-      white-space: nowrap;
-    }
-
-    /* LISTS */
-    .list {
-      display: flex;
-      flex-direction: column;
-      gap: 0.5rem;
-    }
-
-    .list-item {
-      background: rgba(51, 65, 85, 0.6);
-      padding: 0.75rem;
-      border-radius: 6px;
-      cursor: pointer;
-      transition: all 0.2s ease;
-      border: 1px solid transparent;
-    }
-
-    .list-item:active {
-      background: rgba(71, 85, 105, 0.7);
-      border-color: rgba(96, 165, 250, 0.3);
-    }
-
-    .list-item.active {
-      background: rgba(59, 130, 246, 0.2);
-      border-color: #3b82f6;
-    }
-
-    .list-item-name {
-      font-weight: 500;
-      color: #e2e8f0;
-      font-size: 0.95rem;
-    }
-
-    .list-item-desc {
-      font-size: 0.8rem;
-      color: #94a3b8;
-      margin-top: 0.25rem;
-    }
-
-    /* BUTTONS */
-    .controls {
-      display: flex;
-      flex-direction: column;
-      gap: 0.75rem;
-      margin-bottom: 1.5rem;
-    }
-
-    button {
-      background: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%);
-      color: white;
-      border: none;
-      padding: 0.75rem 1rem;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 0.95rem;
-      font-weight: 500;
-      transition: all 0.2s ease;
-      min-height: 44px;
-    }
-
-    button:active {
-      opacity: 0.8;
-      transform: scale(0.98);
-    }
-
-    button:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-
-    /* EMPTY STATE */
-    .empty-state {
-      text-align: center;
-      color: #64748b;
-      padding: 2rem;
-      font-size: 0.9rem;
-    }
-
-    /* SECTION TITLE */
-    .section-title {
-      font-size: 1rem;
-      font-weight: 600;
-      color: #60a5fa;
-      margin-bottom: 1rem;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    /* NARRATION HISTORY */
-    .narration-history {
-      display: flex;
-      flex-direction: column;
-      gap: 0.5rem;
-    }
-
-    /* SCROLLBAR */
-    ::-webkit-scrollbar {
-      width: 6px;
-      height: 6px;
-    }
-
-    ::-webkit-scrollbar-track {
-      background: transparent;
-    }
-
-    ::-webkit-scrollbar-thumb {
-      background: rgba(148, 163, 184, 0.3);
-      border-radius: 3px;
-    }
-
-    ::-webkit-scrollbar-thumb:active {
-      background: rgba(148, 163, 184, 0.5);
-    }
-
-    /* XTERM STYLING */
-    .xterm {
-      padding: 0.5rem;
-      height: 100%;
-    }
-
-    /* LANDSCAPE TABLET & DESKTOP */
-    @media (min-width: 768px) {
-      .app-main {
-        flex-direction: row;
-      }
-
-      .header {
-        padding: 1.5rem;
-        border-right: 1px solid rgba(148, 163, 184, 0.2);
-        border-bottom: none;
-        width: 40%;
-        flex-shrink: 0;
-        overflow-y: auto;
-        -webkit-overflow-scrolling: touch;
-      }
-
-      .tabs {
-        display: none;
-      }
-
-      .content {
-        display: block;
-        flex: 1;
-        width: auto;
-        padding: 1.5rem;
-      }
-
-      .content-main {
-        display: flex;
-        gap: 2rem;
-        height: 100%;
-      }
-
-      .sidebar {
-        width: 35%;
-        overflow-y: auto;
-        -webkit-overflow-scrolling: touch;
-      }
-
-      .main-area {
-        flex: 1;
-        overflow-y: auto;
-        -webkit-overflow-scrolling: touch;
-      }
-    }
-  </style>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=5.0, user-scalable=yes">
+  <title>Narrator IDE - AI Code Narration</title>
+  <link rel="stylesheet" href="css/style.css">
+  <!-- Monaco Editor CDN (optional; fallback to CodeMirror if needed) -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
 </head>
 <body>
   <div class="app-container">
-    <!-- Header -->
-    <div class="header">
-      <div class="header-title">🎙️ Narrator IDE</div>
-      <div class="connection-status">
-        <div class="status-dot" id="statusDot"></div>
-        <span id="connectionStatus">Connecting...</span>
-      </div>
-
-      <div class="status-card">
-        <div class="status-item">
-          <strong>Language:</strong>
-          <span id="currentLanguage">javascript</span>
-        </div>
-        <div class="status-item">
-          <strong>Tone:</strong>
-          <span id="currentTone">casual</span>
-        </div>
-        <div class="status-item">
-          <strong>Persona:</strong>
-          <span id="currentPersona">-</span>
+    <!-- TOP BAR (Sticky/Fixed) -->
+    <header class="top-bar">
+      <div class="top-bar-left">
+        <div class="logo-section">
+          <span class="logo-icon">🎙️</span>
+          <h1 class="app-title">Narrator IDE</h1>
         </div>
       </div>
 
-      <div class="controls">
-        <button onclick="toggleNarration()">▶ Toggle Narration</button>
-        <button onclick="clearHistory()">🗑️ Clear History</button>
+      <div class="top-bar-center">
+        <div class="connection-status">
+          <span class="status-dot connected" id="statusDot"></span>
+          <span class="status-text" id="connectionStatus">Connecting...</span>
+          <span class="provider-badge" id="providerBadge">Claude</span>
+        </div>
       </div>
 
-      <!-- Tablet+ only: Personas and Tones -->
-      <div style="display: none;">
-        <div class="section-title">Languages</div>
-        <div class="list" id="personasList"></div>
-
-        <div class="section-title" style="margin-top: 1.5rem;">Tones</div>
-        <div class="list" id="tonesList"></div>
+      <div class="top-bar-right">
+        <button class="icon-btn" id="narrationToggle" title="Toggle narration (Ctrl+Shift+N)">
+          <span class="icon">🎙️</span>
+        </button>
+        <button class="icon-btn" id="helpBtn" title="Keyboard shortcuts">
+          <span class="icon">?</span>
+        </button>
+        <button class="icon-btn" id="settingsBtn" title="Settings">
+          <span class="icon">⚙️</span>
+        </button>
       </div>
+    </header>
+
+    <!-- MAIN LAYOUT GRID (Desktop: 3-column, Mobile: 1-column) -->
+    <div class="main-grid">
+      <!-- LEFT SIDEBAR: Controls -->
+      <aside class="sidebar sidebar-left" id="sidebarLeft">
+        <div class="sidebar-header">
+          <h2>Controls</h2>
+          <button class="collapse-btn" id="collapseLeft" title="Collapse sidebar">◀</button>
+        </div>
+
+        <div class="sidebar-content">
+          <!-- PERSONA SELECTOR -->
+          <div class="control-group">
+            <label class="control-label">Language Persona</label>
+            <div class="persona-dropdown-wrapper">
+              <select id="personaSelect" class="control-select">
+                <option value="">Loading...</option>
+              </select>
+            </div>
+            <div id="personaDescription" class="control-description"></div>
+          </div>
+
+          <!-- TONE SELECTOR -->
+          <div class="control-group">
+            <label class="control-label">Tone Style</label>
+            <div class="tone-dropdown-wrapper">
+              <select id="toneSelect" class="control-select">
+                <option value="">Loading...</option>
+              </select>
+            </div>
+            <div id="toneDescription" class="control-description"></div>
+          </div>
+
+          <!-- LANGUAGE AUTO-DETECT -->
+          <div class="control-group">
+            <label class="control-label">Language</label>
+            <div class="language-info">
+              <span id="detectedLanguage" class="language-tag">auto-detect</span>
+              <button class="link-btn" id="overrideLanguage">Override</button>
+            </div>
+          </div>
+
+          <!-- NARRATION STATUS -->
+          <div class="control-group">
+            <label class="control-label">Narration Status</label>
+            <div class="toggle-switch">
+              <input type="checkbox" id="narrationEnabled" checked>
+              <label for="narrationEnabled" class="toggle-label">
+                <span class="toggle-slider"></span>
+                <span class="toggle-text" id="narrationStatusText">Enabled</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- METRICS -->
+          <div class="metrics-box">
+            <h3 class="metrics-title">Metrics</h3>
+            <div class="metric-row">
+              <span class="metric-label">Last Narrated:</span>
+              <span class="metric-value" id="lastNarrated">Never</span>
+            </div>
+            <div class="metric-row">
+              <span class="metric-label">Response Time:</span>
+              <span class="metric-value" id="responseTime">–</span>
+            </div>
+            <div class="metric-row">
+              <span class="metric-label">LLM Provider:</span>
+              <span class="metric-value" id="llmProvider">Claude</span>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- CENTER: CODE EDITOR -->
+      <main class="editor-container" id="editorContainer">
+        <div id="editor" class="monaco-editor"></div>
+        <div class="editor-footer">
+          <span id="editorStatus" class="editor-status">Ready</span>
+        </div>
+      </main>
+
+      <!-- RIGHT SIDEBAR: Narration Output -->
+      <aside class="sidebar sidebar-right" id="sidebarRight">
+        <div class="sidebar-header">
+          <h2>Narration</h2>
+          <button class="collapse-btn" id="collapseRight" title="Collapse sidebar">▶</button>
+        </div>
+
+        <div class="sidebar-content">
+          <!-- LIVE NARRATION -->
+          <div class="narration-section">
+            <h3 class="section-title">Live Output</h3>
+            <div id="liveNarration" class="live-narration">
+              <div class="empty-state">Waiting for narration...</div>
+            </div>
+          </div>
+
+          <!-- AUDIO PLAYER (if TTS enabled) -->
+          <div class="audio-section" id="audioSection" style="display: none;">
+            <h3 class="section-title">Audio Playback</h3>
+            <audio id="narrationAudio" controls style="width: 100%; margin-top: 0.5rem;">
+              <source type="audio/mpeg">
+              Your browser does not support the audio element.
+            </audio>
+          </div>
+
+          <!-- HISTORY -->
+          <div class="history-section">
+            <div class="history-header">
+              <h3 class="section-title">History</h3>
+              <button class="link-btn" id="clearHistory">Clear</button>
+            </div>
+            <div id="narrationHistory" class="narration-history">
+              <div class="empty-state">No narrations yet</div>
+            </div>
+          </div>
+        </div>
+      </aside>
     </div>
 
-    <!-- MAIN CONTENT + TERMINAL -->
-    <div class="content-wrapper">
-      <!-- Content Area -->
-      <div class="app-main">
-        <!-- Mobile Navigation Tabs -->
-        <div class="tabs" id="tabs">
-          <button class="tab active" onclick="switchTab('history')">📝 History</button>
-          <button class="tab" onclick="switchTab('personas')">🗣️ Languages</button>
-          <button class="tab" onclick="switchTab('tones')">🎵 Tones</button>
-        </div>
+    <!-- MOBILE BOTTOM TAB BAR (hidden on desktop) -->
+    <nav class="mobile-tab-bar" id="mobileTabBar">
+      <button class="mobile-tab active" data-tab="controls">Controls</button>
+      <button class="mobile-tab" data-tab="narration">Narration</button>
+      <button class="mobile-tab" data-tab="history">History</button>
+    </nav>
 
-        <!-- History Tab (Mobile + Tablet+) -->
-        <div class="content active" id="history-tab">
-          <div class="section-title">Narration History</div>
-          <div class="narration-history" id="narrationHistory">
-            <div class="empty-state">No narrations yet. Start coding to see narrations here.</div>
-          </div>
-        </div>
-
-        <!-- Personas Tab (Mobile only) -->
-        <div class="content" id="personas-tab">
-          <div class="section-title">Select a Language</div>
-          <div class="list" id="personasListMobile"></div>
-        </div>
-
-        <!-- Tones Tab (Mobile only) -->
-        <div class="content" id="tones-tab">
-          <div class="section-title">Select a Tone</div>
-          <div class="list" id="tonesListMobile"></div>
-        </div>
-      </div>
-
-      <!-- Terminal Resizer & Panel -->
-      <div class="terminal-resizer" id="terminalResizer"></div>
-      <div class="terminal-panel" id="terminalPanel">
-        <div class="terminal-header">
-          <span class="terminal-header-title">📟 Terminal</span>
-          <div class="terminal-controls">
-            <button class="terminal-btn" onclick="toggleTerminal()" title="Toggle Terminal">−</button>
-            <button class="terminal-btn" onclick="clearTerminal()" title="Clear Terminal">×</button>
-          </div>
-        </div>
-        <div class="terminal-content" id="terminalContainer"></div>
+    <!-- MOBILE BOTTOM SHEET (for tab content on mobile) -->
+    <div class="mobile-sheet" id="mobileSheet">
+      <div class="mobile-sheet-content" id="mobileSheetContent">
+        <!-- Populated dynamically -->
       </div>
     </div>
   </div>
 
-  <!-- XTerm Library -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xterm/5.3.0/xterm.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xterm/5.3.0/xterm-addon-fit.min.js"></script>
+  <!-- SETTINGS MODAL -->
+  <div class="modal" id="settingsModal">
+    <div class="modal-backdrop" id="settingsBackdrop"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Settings</h2>
+        <button class="modal-close" id="closeSettings">×</button>
+      </div>
+      <div class="modal-body">
+        <!-- LLM PROVIDER -->
+        <div class="settings-group">
+          <label class="settings-label">LLM Provider</label>
+          <select id="llmProviderSelect" class="control-select">
+            <option value="claude">Claude (Anthropic)</option>
+            <option value="ollama">Ollama (Local)</option>
+            <option value="hf">HuggingFace</option>
+            <option value="grok">Grok (xAI)</option>
+          </select>
+        </div>
 
-  <script>
-    let ws = null;
-    let term = null;
-    let fitAddon = null;
-    let currentState = {};
-    let narrationHistory = [];
-    let terminalHeight = 200;
-    let isResizing = false;
-
-    // Initialize Terminal
-    function initTerminal() {
-      const container = document.getElementById('terminalContainer');
-      term = new Terminal({
-        cursorBlink: true,
-        cursorStyle: 'block',
-        rows: 10,
-        cols: 80,
-        theme: {
-          background: '#0f172a',
-          foreground: '#e2e8f0',
-          cursor: '#60a5fa',
-          cursorAccent: '#0f172a',
-        },
-        fontFamily: "'Monaco', 'Courier New', monospace",
-        fontSize: 12,
-        letterSpacing: 0,
-        lineHeight: 1.2,
-      });
-
-      fitAddon = new FitAddon.FitAddon();
-      term.loadAddon(fitAddon);
-      term.open(container);
-
-      setTimeout(() => {
-        try {
-          fitAddon.fit();
-        } catch (e) {
-          console.log('FitAddon fit error:', e);
-        }
-      }, 100);
-
-      // Send terminal input to server
-      term.onData((data) => {
-        if (ws && ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: 'terminal-input', data }));
-        }
-      });
-
-      term.writeln('\x1b[38;5;87mNarrator IDE Terminal\x1b[0m');
-      term.writeln('\x1b[38;5;240mReady to execute commands\x1b[0m\r\n');
-    }
-
-    // Terminal Resizer
-    const resizer = document.getElementById('terminalResizer');
-    resizer.addEventListener('mousedown', (e) => {
-      isResizing = true;
-      resizer.classList.add('dragging');
-      document.addEventListener('mousemove', onResizeMove);
-      document.addEventListener('mouseup', onResizeEnd);
-    });
-
-    function onResizeMove(e) {
-      if (!isResizing) return;
-      const panel = document.getElementById('terminalPanel');
-      const wrapper = document.querySelector('.content-wrapper');
-      const newHeight = wrapper.clientHeight - (e.clientY - wrapper.offsetTop);
-      if (newHeight > 100 && newHeight < wrapper.clientHeight - 100) {
-        terminalHeight = newHeight;
-        panel.style.height = newHeight + 'px';
-        if (term && fitAddon) {
-          try {
-            fitAddon.fit();
-          } catch (e) {}
-        }
-      }
-    }
-
-    function onResizeEnd() {
-      isResizing = false;
-      document.getElementById('terminalResizer').classList.remove('dragging');
-      document.removeEventListener('mousemove', onResizeMove);
-      document.removeEventListener('mouseup', onResizeEnd);
-    }
-
-    function clearTerminal() {
-      if (term) term.clear();
-    }
-
-    function toggleTerminal() {
-      const panel = document.getElementById('terminalPanel');
-      panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
-      if (term && fitAddon && panel.style.display !== 'none') {
-        setTimeout(() => {
-          try {
-            fitAddon.fit();
-          } catch (e) {}
-        }, 100);
-      }
-    }
-
-    // TAB SWITCHING
-    function switchTab(tabName) {
-      document.querySelectorAll('.content').forEach(tab => {
-        tab.classList.remove('active');
-      });
-      document.querySelectorAll('.tab').forEach(tab => {
-        tab.classList.remove('active');
-      });
-      document.getElementById(tabName + '-tab').classList.add('active');
-      event.target.classList.add('active');
-    }
-
-    function connectWebSocket() {
-      ws = new WebSocket('ws://localhost:3000');
-
-      ws.onopen = () => {
-        console.log('Connected to Narrator Server');
-        document.getElementById('statusDot').classList.add('connected');
-        document.getElementById('connectionStatus').textContent = 'Connected';
-        loadPersonas();
-        loadTones();
-        // Notify terminal connection
-        if (term) {
-          term.writeln('\x1b[38;5;82m✓ Connected to Narrator Server\x1b[0m');
-        }
-      };
-
-      ws.onmessage = (event) => {
-        const message = JSON.parse(event.data);
-        handleMessage(message);
-      };
-
-      ws.onclose = () => {
-        console.log('Disconnected from Narrator Server');
-        document.getElementById('statusDot').classList.remove('connected');
-        document.getElementById('connectionStatus').textContent = 'Disconnected';
-        if (term) {
-          term.writeln('\x1b[38;5;196m✗ Disconnected from Narrator Server\x1b[0m');
-        }
-        setTimeout(connectWebSocket, 5000);
-      };
-
-      ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
-      };
-    }
-
-    function handleMessage(message) {
-      switch (message.type) {
-        case 'state':
-          currentState = message.data;
-          updateStatus();
-          break;
-
-        case 'narration':
-          addNarration(message.data);
-          break;
-
-        case 'persona-changed':
-          currentState.language = message.data.language;
-          currentState.persona = message.data.persona;
-          updateStatus();
-          break;
-
-        case 'tone-changed':
-          currentState.tone = message.data.tone;
-          updateStatus();
-          break;
-
-        case 'personas':
-          renderPersonas(message.data);
-          break;
-
-        case 'tones':
-          renderTones(message.data);
-          break;
-
-        case 'terminal-output':
-          if (term) {
-            term.write(message.data);
-          }
-          break;
-      }
-    }
-
-    function updateStatus() {
-      document.getElementById('currentLanguage').textContent = currentState.language || '-';
-      document.getElementById('currentTone').textContent = currentState.tone || '-';
-      document.getElementById('currentPersona').textContent = currentState.persona?.name || '-';
-    }
-
-    async function loadPersonas() {
-      ws.send(JSON.stringify({ type: 'get-personas' }));
-    }
-
-    async function loadTones() {
-      ws.send(JSON.stringify({ type: 'get-tones' }));
-    }
-
-    function renderPersonas(personas) {
-      const container = document.getElementById('personasList');
-      if (container) {
-        container.innerHTML = personas.map(p => `
-          <div class="list-item ${p.id === currentState.language ? 'active' : ''}" onclick="setPersona('${p.id}')">
-            <div class="list-item-name">${p.name}</div>
-            <div class="list-item-desc">${p.language}</div>
-          </div>
-        `).join('');
-      }
-
-      const mobileContainer = document.getElementById('personasListMobile');
-      if (mobileContainer) {
-        mobileContainer.innerHTML = personas.map(p => `
-          <div class="list-item ${p.id === currentState.language ? 'active' : ''}" onclick="setPersona('${p.id}')">
-            <div class="list-item-name">${p.name}</div>
-            <div class="list-item-desc">${p.language}</div>
-          </div>
-        `).join('');
-      }
-    }
-
-    function renderTones(tones) {
-      const container = document.getElementById('tonesList');
-      if (container) {
-        container.innerHTML = tones.map(t => `
-          <div class="list-item ${t.id === currentState.tone ? 'active' : ''}" onclick="setTone('${t.id}')">
-            <div class="list-item-name">${t.name}</div>
-            <div class="list-item-desc">${t.description}</div>
-          </div>
-        `).join('');
-      }
-
-      const mobileContainer = document.getElementById('tonesListMobile');
-      if (mobileContainer) {
-        mobileContainer.innerHTML = tones.map(t => `
-          <div class="list-item ${t.id === currentState.tone ? 'active' : ''}" onclick="setTone('${t.id}')">
-            <div class="list-item-name">${t.name}</div>
-            <div class="list-item-desc">${t.description}</div>
-          </div>
-        `).join('');
-      }
-    }
-
-    function setPersona(language) {
-      ws.send(JSON.stringify({ type: 'set-persona', language }));
-    }
-
-    function setTone(tone) {
-      ws.send(JSON.stringify({ type: 'set-tone', tone }));
-    }
-
-    function toggleNarration() {
-      console.log('Toggling narration');
-    }
-
-    function clearHistory() {
-      ws.send(JSON.stringify({ type: 'clear-history' }));
-      narrationHistory = [];
-      document.getElementById('narrationHistory').innerHTML = '<div class="empty-state">History cleared</div>';
-    }
-
-    function addNarration(data) {
-      narrationHistory.unshift(data);
-
-      const historyContainer = document.getElementById('narrationHistory');
-      if (historyContainer.querySelector('.empty-state')) {
-        historyContainer.innerHTML = '';
-      }
-
-      const timestamp = new Date(data.timestamp).toLocaleTimeString();
-      const html = `
-        <div class="narration-box">
-          <div class="narration-text">"${data.text}"</div>
-          <div class="narration-meta">
-            <div class="persona-badge">${data.persona.name}</div>
-            <span>${timestamp}</span>
+        <!-- TTS TOGGLE -->
+        <div class="settings-group">
+          <label class="control-label">Text-to-Speech</label>
+          <div class="toggle-switch">
+            <input type="checkbox" id="ttsEnabled">
+            <label for="ttsEnabled" class="toggle-label">
+              <span class="toggle-slider"></span>
+              <span class="toggle-text">Enable audio narration</span>
+            </label>
           </div>
         </div>
-      `;
 
-      historyContainer.insertAdjacentHTML('afterbegin', html);
+        <!-- API KEY (if applicable) -->
+        <div class="settings-group" id="apiKeyGroup" style="display: none;">
+          <label class="settings-label">API Key</label>
+          <input type="password" id="apiKey" class="control-input" placeholder="Enter your API key">
+        </div>
 
-      if (narrationHistory.length > 20) {
-        historyContainer.removeChild(historyContainer.lastChild);
-        narrationHistory.pop();
-      }
+        <div class="settings-note">
+          Note: API keys are stored locally in your browser. Never share your keys.
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="closeSettingsBtn">Close</button>
+      </div>
+    </div>
+  </div>
 
-      if (window.innerWidth < 768) {
-        historyContainer.parentElement.scrollTop = 0;
-      }
+  <!-- HELP MODAL -->
+  <div class="modal" id="helpModal">
+    <div class="modal-backdrop" id="helpBackdrop"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Keyboard Shortcuts</h2>
+        <button class="modal-close" id="closeHelp">×</button>
+      </div>
+      <div class="modal-body">
+        <table class="shortcuts-table">
+          <tr>
+            <td><code>Ctrl+Shift+N</code></td>
+            <td>Toggle narration</td>
+          </tr>
+          <tr>
+            <td><code>Ctrl+Alt+P</code></td>
+            <td>Next persona</td>
+          </tr>
+          <tr>
+            <td><code>Ctrl+Alt+T</code></td>
+            <td>Next tone</td>
+          </tr>
+          <tr>
+            <td><code>Escape</code></td>
+            <td>Close modals</td>
+          </tr>
+        </table>
+      </div>
+    </div>
+  </div>
 
-      if (data.audio) {
-        playAudio(data.audio);
-      }
-    }
+  <!-- SCRIPTS -->
+  <script src="js/app.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/websocket.js"></script>
 
-    function playAudio(audioBase64) {
-      try {
-        const audioBuffer = Uint8Array.from(atob(audioBase64), c => c.charCodeAt(0));
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-
-        audioContext.decodeAudioData(audioBuffer.buffer, (decodedBuffer) => {
-          const source = audioContext.createBufferSource();
-          source.buffer = decodedBuffer;
-          source.connect(audioContext.destination);
-          source.start(0);
-        });
-      } catch (error) {
-        console.log('Audio playback not available');
-      }
-    }
-
-    function checkResponsive() {
-      const tabs = document.getElementById('tabs');
-      if (window.innerWidth >= 768) {
-        tabs.style.display = 'none';
-      } else {
-        tabs.style.display = 'flex';
-      }
-    }
-
-    // Initialize on load
-    window.addEventListener('resize', checkResponsive);
-    window.addEventListener('load', () => {
-      checkResponsive();
-      initTerminal();
-      connectWebSocket();
-    });
-
-    // Handle window resize for terminal
-    window.addEventListener('resize', () => {
-      if (term && fitAddon) {
-        try {
-          fitAddon.fit();
-        } catch (e) {}
-      }
-    });
+  <!-- Monaco Editor (CDN) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
+  <script>
+    require.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' } });
   </script>
 </body>
 </html>

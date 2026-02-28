@@ -22,6 +22,12 @@ const wss = new WebSocket.Server({ server });
 
 // Middleware
 app.use(express.json());
+
+// Serve modern UI by default
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, '../web/index-modern.html'));
+});
+
 app.use(express.static(path.join(__dirname, '../web')));
 
 // Initialize engines
