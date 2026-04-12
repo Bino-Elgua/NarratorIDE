@@ -72,8 +72,66 @@ ${codeContext}${projectInfo}`;
         return `Narration paused: ${error.message}. Try another provider or check API keys.`;
       }
     }
-    throw error;
+
+    console.error('[LLM] Claude failed. Returning placeholder.');
+    return `Narration paused: ${error.message}. Please check API keys or provider configuration.`;
   }
+}
+
+function parseAnthropicResponse(response) {
+  if (!response) return '';
+  if (typeof response.content === 'string') return response.content.trim();
+  if (Array.isArray(response.content)) {
+    return response.content
+      .map((block) => (typeof block.text === 'string' ? block.text : typeof block.content === 'string' ? block.content : ''))
+      .join('')
+      .trim();
+  }
+  return '';
+}
+
+function parseHuggingFaceResponse(response) {
+  if (!response) return '';
+  if (typeof response.generated_text === 'string') return response.generated_text.trim();
+  if (Array.isArray(response) && response[0] && typeof response[0].generated_text === 'string') {
+    return response[0].generated_text.trim();
+  }
+  return '';
+}
+
+function parseOllamaResponse(data) {
+  if (!data) return '';
+  if (typeof data.response === 'string') return data.response.trim();
+  if (Array.isArray(data.output)) {
+    return data.output
+      .map((item) => {
+        if (typeof item.content === 'string') return item.content;
+        if (Array.isArray(item.content)) {
+          return item.content.map((block) => block.text || block.content || '').join('');
+        }
+        return '';
+      })
+      .join('')
+      .trim();
+  }
+  if (typeof data.text === 'string') return data.text.trim();
+  return '';
+}
+
+function parseGrokResponse(data) {
+  if (!data) return '';
+  const message = data?.choices?.[0]?.message;
+  if (message) {
+    if (typeof message.content === 'string') return message.content.trim();
+    if (Array.isArray(message.content)) {
+      return message.content.map((block) => block.text || block.content || '').join('').trim();
+    }
+  }
+  if (typeof data.output === 'string') return data.output.trim();
+  if (Array.isArray(data.output)) {
+    return data.output.map((block) => block.text || block.content || '').join('').trim();
+  }
+  return '';
 }
 
 /**
@@ -86,7 +144,9 @@ async function generateClaude(prompt) {
     max_tokens: 300,
     messages: [{ role: 'user', content: prompt }]
   });
-  return response.content[0].text;
+  const output = parseAnthropicResponse(response);
+  if (!output) throw new Error('Claude returned no content');
+  return output;
 }
 
 /**
@@ -103,7 +163,9 @@ async function generateOllama(prompt) {
     stream: false
   });
 
-  return response.data.response;
+  const output = parseOllamaResponse(response.data);
+  if (!output) throw new Error('Ollama returned no content');
+  return output;
 }
 
 /**
@@ -123,8 +185,9 @@ async function generateHuggingFace(prompt) {
     }
   });
 
-  // HF returns { generated_text: "prompt...response" }
-  return response.generated_text.replace(prompt, '').trim();
+  const output = parseHuggingFaceResponse(response);
+  if (!output) throw new Error('HuggingFace returned no content');
+  return output.replace(prompt, '').trim();
 }
 
 /**
@@ -141,7 +204,9 @@ async function generateGrok(prompt) {
     headers: { Authorization: `Bearer ${process.env.XAI_API_KEY}` }
   });
 
-  return response.data.choices[0].message.content;
+  const output = parseGrokResponse(response.data);
+  if (!output) throw new Error('Grok returned no content');
+  return output;
 }
 
 module.exports = { generateNarration };

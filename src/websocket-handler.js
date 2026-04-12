@@ -170,6 +170,7 @@ class WebSocketHandler {
 
       // ── Narration ──
       case 'code-change':
+      case 'narrate':
         return this._handleCodeChange(clientId, message);
       case 'set-persona':
         return this._handleSetPersona(clientId, message);
