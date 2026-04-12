@@ -1,21 +1,24 @@
 {
   "name": "narrator-ide",
-  "version": "1.0.0",
-  "description": "VSCode + NotebookLM + ElevenLabs: AI narration of your coding process with language-specific personas",
-  "main": "src/index.js",
+  "version": "2.0.0",
+  "description": "Browser IDE with AI narration, thinking-mode voice, Monaco editor, terminal, and Clawbot agentic coding",
+  "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "ext:build": "cd vscode-extension && npm install && npm run compile",
     "ext:package": "cd vscode-extension && vsce package",
-    "setup": "npm install && npm run setup:deps",
-    "setup:deps": "python3 -m pip install elevenlabs anthropic"
+    "setup": "npm install"
   },
   "keywords": [
     "ide",
     "narration",
     "ai",
     "vscode",
+    "monaco",
+    "terminal",
+    "clawbot",
+    "thinking",
     "personas"
   ],
   "author": "LÉO",

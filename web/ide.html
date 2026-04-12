@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NarratorIDE - Agentic Coding with Voice</title>
+
+  <!-- Monaco Editor -->
+  <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
+
+  <!-- xterm.js -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.css">
+  <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.js"></script>
+
+  <!-- IDE Layout -->
+  <link rel="stylesheet" href="css/ide-layout.css">
+</head>
+<body>
+
+<div id="ide-container">
+
+  <!-- ─── Header ─── -->
+  <header id="ide-header">
+    <span class="logo">🎙️ NarratorIDE</span>
+    <div class="controls">
+      <select id="persona-select">
+        <option value="rust">🔧 Rust - Meticulous Engineer</option>
+        <option value="go">⚡ Go - Pragmatist</option>
+        <option value="python">🐍 Python - Gen-Z Creative</option>
+        <option value="javascript">⚡ JS - Chaos Agent</option>
+        <option value="c">🏛️ C - Elder Craftsman</option>
+        <option value="java">☕ Java - Corporate Consultant</option>
+        <option value="lisp">🌀 Lisp - Philosopher</option>
+        <option value="typescript">📐 TypeScript - Careful Editor</option>
+      </select>
+      <select id="tone-select">
+        <option value="academic">Academic</option>
+        <option value="casual" selected>Casual</option>
+        <option value="playful">Playful</option>
+        <option value="verbose">Verbose</option>
+        <option value="concise">Concise</option>
+        <option value="encouraging">Encouraging</option>
+        <option value="brutal">Brutal</option>
+      </select>
+      <button id="narrate-btn">🔊 Narrate</button>
+      <button id="clawbot-btn">🤖 Clawbot</button>
+      <button id="thinking-toggle">🧠 Think</button>
+    </div>
+  </header>
+
+  <!-- ─── Body ─── -->
+  <div id="ide-body">
+
+    <!-- Left Sidebar: File Explorer -->
+    <aside id="sidebar-left">
+      <div class="panel-header">
+        <span>Explorer</span>
+        <div>
+          <button title="New File">📄</button>
+          <button title="New Folder">📁</button>
+        </div>
+      </div>
+      <div id="file-tree"></div>
+    </aside>
+
+    <!-- Main: Editor + Terminal -->
+    <main id="main-area">
+      <div id="tab-bar"></div>
+      <div id="editor-container"></div>
+      <div id="h-splitter"></div>
+      <div id="terminal-panel">
+        <div class="panel-header">
+          <span>Terminal</span>
+          <div>
+            <button title="New Terminal">+</button>
+            <button title="Clear Terminal">×</button>
+          </div>
+        </div>
+        <div id="terminal-container"></div>
+      </div>
+    </main>
+
+    <!-- Right Sidebar: Narration / Clawbot / Thinking -->
+    <aside id="sidebar-right">
+
+      <div id="narration-panel" class="panel">
+        <div class="panel-header">🎙️ Narration</div>
+        <div id="narration-history"></div>
+        <div id="current-narration"></div>
+      </div>
+
+      <div id="clawbot-panel" class="panel">
+        <div class="panel-header">🤖 Clawbot</div>
+        <div id="clawbot-chat"></div>
+        <div class="clawbot-input-row">
+          <input id="clawbot-input" type="text" placeholder="Ask Clawbot…">
+          <button class="send-btn">Send</button>
+        </div>
+      </div>
+
+      <div id="thinking-panel" class="panel" hidden>
+        <div class="panel-header">🧠 Thinking</div>
+        <div id="thinking-stream"></div>
+      </div>
+
+    </aside>
+
+  </div>
+
+  <!-- ─── Status Bar ─── -->
+  <footer id="status-bar">
+    <span id="status-language">JavaScript</span>
+    <span id="status-position">Ln 1, Col 1</span>
+    <span id="status-narration">🔊 Ready</span>
+    <span id="status-clawbot">🤖 Disconnected</span>
+    <span id="status-ws">⚡ Connected</span>
+  </footer>
+
+</div>
+
+<script type="module" src="js/ide-main.js"></script>
+</body>
+</html>

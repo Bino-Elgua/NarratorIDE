@@ -1,5 +1,0 @@
-✨ Narrator IDE Server running on http://localhost:3000
-🎙️  WebSocket connections: ws://localhost:3000
-📚 Available personas: rust, go, python, javascript, c, java, lisp, typescript
-🎨 Available tones: academic, casual, playful, verbose, concise, encouraging, brutal
-[2201d1f0-4126-4e34-b540-d022570acec3] Client connected. Total: 1
