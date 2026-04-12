@@ -205,6 +205,14 @@ class WebSocketHandler {
       case 'narrate-with-thinking':
         return this._handleNarrateWithThinking(clientId, message);
 
+      // ── Vibe Coder ──
+      case 'vibe-start':
+        if (this.vibeHandler) return this.vibeHandler.handleVibeStart(clientId, message);
+        return this._send(clientId, { type: 'error', error: 'Vibe handler not initialized' });
+      case 'vibe-stop':
+        if (this.vibeHandler) return this.vibeHandler.handleVibeStop(clientId);
+        return;
+
       default:
         console.log(`Unknown message type: ${message.type}`);
     }

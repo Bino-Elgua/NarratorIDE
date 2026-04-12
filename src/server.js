@@ -18,6 +18,8 @@ const AnalyticsService = require('./analytics-service');
 const ClawbotService = require('./clawbot-service');
 const ThinkingNarrator = require('./thinking-narrator');
 const WebSocketHandler = require('./websocket-handler');
+const VibeOrchestrator = require('./vibe-orchestrator');
+const VibeWebSocketHandler = require('./websocket-vibe-handler');
 const { PERSONAS, TONES, getPersona, getTone } = require('./personas');
 
 const app = express();
@@ -60,11 +62,23 @@ const wsHandler = new WebSocketHandler(
   wss, narrator, tts, fileSystem, terminalManager, gitManager, analytics, clawbotService, thinkingNarrator
 );
 
+// Initialize Vibe Coder (dual-model orchestrator)
+const vibeOrchestrator = new VibeOrchestrator({ tts });
+const vibeHandler = new VibeWebSocketHandler(wsHandler, vibeOrchestrator, fileSystem);
+
+// Inject vibe handler into the main WS router
+wsHandler.vibeHandler = vibeHandler;
+
 // Start file watching
 fileSystem.startWatching();
 
-// Serve IDE as default page
+// Serve Vibe Coder as default page
 app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, '../web/vibe.html'));
+});
+
+// Serve original IDE
+app.get('/ide', (req, res) => {
   res.sendFile(path.join(__dirname, '../web/ide.html'));
 });
 
@@ -186,5 +200,8 @@ server.listen(PORT, () => {
   console.log(`📚 Personas: ${Object.keys(PERSONAS).join(', ')}`);
   console.log(`🎨 Tones: ${Object.keys(TONES).join(', ')}`);
   console.log(`🤖 Clawbot: ${clawbotService.apiKey ? 'enabled' : 'no API key — disabled'}`);
-  console.log(`🔊 TTS: ${tts.apiKey ? 'ElevenLabs' : 'browser SpeechSynthesis fallback'}\n`);
+  console.log(`🔊 TTS: ${tts.apiKey ? 'ElevenLabs' : 'browser SpeechSynthesis fallback'}`);
+  console.log(`🎙️  Vibe Coder: ${vibeOrchestrator.coderModel} + ${vibeOrchestrator.narratorModel}`);
+  console.log(`   Vibe UI: http://localhost:${PORT}/`);
+  console.log(`   Classic IDE: http://localhost:${PORT}/ide\n`);
 });
