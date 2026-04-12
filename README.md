@@ -44,9 +44,17 @@ Instead of sitting around waiting for code, a narrator agent speaks the story of
 ### 🎮 Interactive Controls
 - Toggle narration on/off instantly
 - Switch personas/tones on-the-fly
-- View live narration history
-- Monitor connection status
-- Keyboard shortcuts support
+- **Real Terminal**: Integrated xterm.js with backend shell access
+- **Git Integration**: Narrates branch status and file diffs
+- **Collaboration**: Real-time cursor awareness and user presence
+
+### 🤖 Agentic & Enterprise Features (v2.0)
+- **Diff Narration**: AI focuses on *what* changed and *why* it matters
+- **Multi-File Awareness**: Narrator understands the project context across files
+- **Thinking Mode**: Translates internal LLM reasoning into persona-voiced thoughts
+- **Usage Analytics**: Track narration performance and popular personas
+- **Auth & Security**: Optional API key protection for enterprise environments
+- **Accessibility**: Screen-reader friendly with ARIA live regions
 
 ### 📱 Responsive Web UI
 - Mobile-first design (works on phone/tablet/desktop)
@@ -242,6 +250,8 @@ narrator-ide/
 | `GET` | `/api/state` | Current configuration |
 | `POST` | `/api/narrate` | Narrate text (REST) |
 | `GET` | `/api/providers` | Available LLM providers |
+| `GET` | `/api/analytics` | Usage & performance stats |
+| `GET` | `/api/files` | List/Tree workspace files |
 
 **POST /api/narrate Example**
 ```bash
@@ -279,6 +289,10 @@ ANTHROPIC_API_KEY=sk-ant-...     # For Claude
 HF_TOKEN=hf_...                  # For HuggingFace
 XAI_API_KEY=xai-...              # For Grok
 OLLAMA_API_URL=http://localhost:11434  # For Ollama
+
+# App Settings (Phase 4)
+APP_API_KEY=your-secret-key      # Optional: Protect /api endpoints
+WORKSPACE_ROOT=/path/to/project  # Optional: Default workspace
 
 # Server Configuration
 PORT=3000
@@ -428,13 +442,16 @@ vsce package
 ### File Structure
 
 - **src/server.js** — Main Express server + WebSocket
-- **src/llm-provider.js** — Multi-provider LLM router
-- **src/personas.js** — All 8 personas & 7 tones
-- **src/narrator.js** — Narration generation logic
-- **web/index.html** — Web UI (mobile-first responsive)
+- **src/llm-provider.js** — Multi-provider LLM router (diff-aware)
+- **src/personas.js** — 8 personas + custom JSON loading
+- **src/narrator.js** — Narration engine (multi-file context)
+- **src/git-manager.js** — Git status & diff narration
+- **src/terminal-manager.js** — Backend shell sessions
+- **src/analytics-service.js** — Usage & performance tracking
+- **src/thinking-narrator.js** — Agent reasoning translator
+- **web/ide.html** — Full Agentic IDE (v2.0 default)
+- **web/index-modern.html** — Modern dashboard UI
 - **vscode-extension/** — VSCode integration
-- **test-llm-mock.js** — Mock testing (no API calls)
-- **test-llm.js** — Real provider testing
 
 ---
 
@@ -454,34 +471,14 @@ vsce package
 3. Try a different persona/tone
 4. Check browser speaker volume
 
-### Ollama Not Connecting?
-
-1. Verify Ollama is running: `ollama serve`
-2. Check URL in .env: `OLLAMA_API_URL=http://localhost:11434`
-3. Test connection: `curl http://localhost:11434/api/tags`
-
-### Provider Timeout?
-
-1. Check internet connection
-2. Try fallback provider (automatic)
-3. Check API key is valid
-4. Review rate limits for that provider
-
-### WebSocket Connection Failed?
-
-1. Ensure server is running: `npm start`
-2. Check port: `lsof -i :3000`
-3. Try different browser
-4. Check firewall settings
-
 ---
 
 ## 📚 Documentation Files
 
-- **QUICK_REFERENCE.md** — 1-minute setup guide
+- **MODERN_IDE_UPGRADE.md** — Full feature reference (v2.0)
+- **UPGRADE_SUMMARY.md** — Phases 1-4 completion roadmap
 - **MULTI_LLM_INTEGRATION.md** — Deep dive on providers
-- **README_MULTI_LLM.md** — Overview & examples
-- **LOCALHOST_STATUS.md** — Server status & diagnostics
+- **QUICK_START_MODERN.md** — 30-second visual guide
 
 ---
 
@@ -494,13 +491,16 @@ vsce package
 - [x] WebSocket real-time
 - [x] REST API
 - [x] VSCode extension
-- [ ] Custom persona creation
-- [ ] Audio playback controls
-- [ ] Persistent history & analytics
+- [x] **Real Terminal** (xterm.js)
+- [x] **Git Integration** (diff narration)
+- [x] **Multi-File Context** awareness
+- [x] **Collaboration** (shared cursors)
+- [x] **Custom Personas** (JSON upload)
+- [x] **Usage Analytics** & Stats
+- [x] **Thinking Mode** (Agent reasoning)
+- [x] **Accessibility** (ARIA/WCAG)
 - [ ] Integration with more editors (Vim, Neovim)
-- [ ] Team narration sessions
-- [ ] Custom voice selection
-- [ ] Code diff narration
+- [ ] Team narration sessions (shared voice)
 
 ---
 
@@ -515,7 +515,7 @@ MIT
 **Built by LÉO** — The Universal Paradigm Smith
 
 - Multi-LLM integration architecture
-- Mobile-first responsive design
+- Agentic IDE implementation (v2.0)
 - Language-specific AI personas
 - Provider fallback system
 
@@ -533,5 +533,5 @@ MIT
 
 **Status**: ✅ Production Ready | 🎙️ Active Development
 
-Current Version: **1.0.0**  
-Last Updated: February 27, 2026
+Current Version: **2.0.0**  
+Last Updated: April 11, 2026

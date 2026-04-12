@@ -3,6 +3,9 @@
  * Each persona has a voice character, speaking style, and system prompt
  */
 
+const fs = require('fs');
+const path = require('path');
+
 const PERSONAS = {
   rust: {
     name: 'The Meticulous Engineer',
@@ -140,6 +143,18 @@ You're patient and detail-oriented. You help you write correct code the first ti
     ]
   }
 };
+
+// Load custom personas if available
+const customPath = path.join(__dirname, '../custom-personas.json');
+if (fs.existsSync(customPath)) {
+  try {
+    const custom = JSON.parse(fs.readFileSync(customPath, 'utf8'));
+    Object.assign(PERSONAS, custom);
+    console.log(`[Personas] Loaded ${Object.keys(custom).length} custom personas.`);
+  } catch (e) {
+    console.error('[Personas] Failed to load custom personas:', e.message);
+  }
+}
 
 const TONES = {
   academic: {

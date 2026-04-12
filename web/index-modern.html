@@ -6,6 +6,10 @@
   <title>Narrator IDE - AI Code Narration</title>
   <link rel="stylesheet" href="css/modern.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+  <!-- xterm.js -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.css">
+  <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.js"></script>
 </head>
 <body>
   <div class="app-container">
@@ -45,9 +49,9 @@
         </div>
 
         <!-- Icon Buttons -->
-        <button class="icon-btn" id="commandBtn" title="Commands (Ctrl+Shift+P)">⌘</button>
-        <button class="icon-btn" id="narrationToggle" title="Toggle narration (Ctrl+Shift+N)">🎙️</button>
-        <button class="icon-btn" id="settingsBtn" title="Settings">⚙️</button>
+        <button class="icon-btn" id="commandBtn" title="Commands (Ctrl+Shift+P)" aria-label="Open Command Palette">⌘</button>
+        <button class="icon-btn" id="narrationToggle" title="Toggle narration (Ctrl+Shift+N)" aria-label="Toggle AI Narration">🎙️</button>
+        <button class="icon-btn" id="settingsBtn" title="Settings" aria-label="Open Settings">⚙️</button>
       </div>
     </header>
 
@@ -134,7 +138,7 @@
           <!-- Live Narration (Glass Card) -->
           <div class="narration-section">
             <h3 class="section-title">Current</h3>
-            <div class="live-narration glass-card" id="liveNarration">
+            <div class="live-narration glass-card" id="liveNarration" aria-live="polite" aria-atomic="true">
               <div class="empty-state">👂 Waiting for code...</div>
             </div>
           </div>
@@ -198,5 +202,6 @@
   <script src="js/command-palette.js"></script>
   <script src="js/bottom-panel.js"></script>
   <script src="js/websocket.js"></script>
+  <script type="module" src="js/terminal/terminal-component.js"></script>
 </body>
 </html>

@@ -10,10 +10,38 @@ require('dotenv').config();
 /**
  * Generate narration using selected LLM provider
  * Falls back gracefully if provider unavailable
+ * @param {string|object} input - Raw code string or { before, after, summary } object
+ * @param {string} persona - Persona name
+ * @param {string} tone - Tone name
  */
-async function generateNarration(code, persona, tone) {
+async function generateNarration(input, persona, tone) {
   const provider = process.env.LLM_PROVIDER || 'claude';
-  const prompt = `You are the ${persona} persona in ${tone} tone. Narrate this code's intent and flow in 1-3 sentences: ${code}`;
+  
+  let codeContext = '';
+  let projectInfo = '';
+  
+  if (typeof input === 'object' && input.after) {
+    if (input.before && input.before !== input.after) {
+      codeContext = `The user changed code.\nBEFORE:\n${input.before}\n\nAFTER:\n${input.after}\n\nSUMMARY: ${input.summary || 'Updated code'}`;
+    } else {
+      codeContext = `Current code:\n${input.after}`;
+    }
+    if (input.projectContext) {
+      projectInfo = `\n\n${input.projectContext}`;
+    }
+    if (input.gitDiff) {
+      codeContext += `\n\nGIT DIFF:\n${input.gitDiff}`;
+    }
+  } else {
+    codeContext = `Code:\n${input}`;
+  }
+
+  const prompt = `You are the ${persona} persona in ${tone} tone. 
+Narrate the intent and flow of this code change in 1-3 sentences. 
+Focus on WHAT changed and WHY it matters. 
+Stay in character.
+
+${codeContext}${projectInfo}`;
 
   console.log(`[LLM] Using provider: ${provider}`);
 

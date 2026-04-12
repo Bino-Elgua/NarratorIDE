@@ -14,6 +14,33 @@ class Narrator extends EventEmitter {
     this.currentTone = 'casual';
     this.narratedChanges = new Set(); // Track what we've narrated to avoid repeats
     this.isNarrating = false;
+    /** @type {Map<string, string>} */
+    this.files = new Map(); // Store current state of multiple files
+  }
+
+  /**
+   * Update internal state of a file
+   */
+  updateFile(filename, content) {
+    if (filename) {
+      this.files.set(filename, content);
+    }
+  }
+
+  /**
+   * Get project-wide context for the LLM
+   */
+  getProjectContext(currentFile = '') {
+    let context = 'Project Context (other files):\n';
+    let count = 0;
+    for (const [filename, content] of this.files) {
+      if (filename !== currentFile) {
+        context += `--- ${filename} ---\n${content.substring(0, 500)}${content.length > 500 ? '...' : ''}\n\n`;
+        count++;
+      }
+      if (count >= 5) break; // Limit context
+    }
+    return count > 0 ? context : '';
   }
 
   /**
@@ -63,7 +90,7 @@ class Narrator extends EventEmitter {
 Additional tone direction: ${tone.styleGuide}
 
 You are narrating code changes as they happen. Keep narrations to 1-3 sentences, punchy and engaging.
-Explain what the code does, why it matters, and what it means for the overall program.
+Focus on WHAT changed and WHY it matters for the overall project.
 Stay in character. Be the voice of ${this.currentLanguage}.`;
   }
 
@@ -77,7 +104,7 @@ Stay in character. Be the voice of ${this.currentLanguage}.`;
     }
 
     this.isNarrating = true;
-    const changeHash = JSON.stringify(codeChange).substring(0, 50);
+    const changeHash = JSON.stringify(codeChange.after).substring(0, 50);
 
     if (this.narratedChanges.has(changeHash)) {
       this.isNarrating = false;
@@ -97,9 +124,16 @@ Stay in character. Be the voice of ${this.currentLanguage}.`;
         this.currentTone = context.tone;
       }
 
+      // Project context
+      const projectContext = this.getProjectContext(context.filename);
+      const enhancedCodeChange = {
+        ...codeChange,
+        projectContext
+      };
+
       // Generate narration via multi-LLM provider
       const narration = await generateNarrationLLM(
-        codeChange.after,
+        enhancedCodeChange,
         this.currentLanguage,
         this.currentTone
       );
@@ -125,10 +159,12 @@ Stay in character. Be the voice of ${this.currentLanguage}.`;
    * Handle incoming code changes from editor
    */
   async onCodeChange(change) {
+    this.updateFile(change.filename, change.currentText);
+
     const codeChange = {
       before: change.previousText || '',
       after: change.currentText || '',
-      summary: `Modified ${change.linesChanged} lines in ${change.filename}`
+      summary: `Modified ${change.linesChanged || 'some'} lines in ${change.filename || 'code'}`
     };
 
     const narration = await this.narrate(codeChange, {

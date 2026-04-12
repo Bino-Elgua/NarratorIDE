@@ -14,6 +14,8 @@ const app = {
   narrationHistory: [],
   personas_list: ['rust', 'go', 'python', 'javascript', 'c', 'java', 'lisp', 'typescript'],
   tones_list: ['academic', 'casual', 'playful', 'verbose', 'concise', 'encouraging', 'brutal'],
+  terminal: null,
+  sessionId: Math.random().toString(36).substring(7),
 
   // Persona avatars & emojis
   personaEmojis: {

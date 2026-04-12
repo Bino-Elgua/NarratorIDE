@@ -14,15 +14,19 @@ class WebSocketHandler {
    * @param {import('./tts')} tts
    * @param {import('./file-system')} fileSystem
    * @param {import('./terminal-manager')} terminalManager
+   * @param {import('./git-manager')} gitManager
+   * @param {import('./analytics-service')} analytics
    * @param {import('./clawbot-service')} clawbotService
    * @param {import('./thinking-narrator')} thinkingNarrator
    */
-  constructor(wss, narrator, tts, fileSystem, terminalManager, clawbotService, thinkingNarrator) {
+  constructor(wss, narrator, tts, fileSystem, terminalManager, gitManager, analytics, clawbotService, thinkingNarrator) {
     this.wss = wss;
     this.narrator = narrator;
     this.tts = tts;
     this.fileSystem = fileSystem;
     this.terminalManager = terminalManager;
+    this.gitManager = gitManager;
+    this.analytics = analytics;
     this.clawbotService = clawbotService;
     this.thinkingNarrator = thinkingNarrator;
 
@@ -85,9 +89,12 @@ class WebSocketHandler {
   _wireConnections() {
     this.wss.on('connection', (ws) => {
       const clientId = uuidv4();
-      this.clients.set(clientId, { ws, sessionId: null });
+      this.clients.set(clientId, { ws, sessionId: null, cursor: null });
 
       console.log(`[${clientId}] Client connected. Total: ${this.clients.size}`);
+      
+      // Broadcast join
+      this.broadcast({ type: 'user-join', clientId, total: this.clients.size });
 
       ws.on('message', async (raw) => {
         try {
@@ -106,6 +113,9 @@ class WebSocketHandler {
         }
         this.clients.delete(clientId);
         console.log(`[${clientId}] Client disconnected. Total: ${this.clients.size}`);
+
+        // Broadcast leave
+        this.broadcast({ type: 'user-leave', clientId, total: this.clients.size });
       });
 
       // Send initial state
@@ -149,6 +159,14 @@ class WebSocketHandler {
         return this._handleTerminalResize(clientId, message);
       case 'terminal-destroy':
         return this._handleTerminalDestroy(clientId, message);
+
+      // ── Git ──
+      case 'git-status':
+        return this._handleGitStatus(clientId, message);
+
+      // ── Collaboration ──
+      case 'cursor-move':
+        return this._handleCursorMove(clientId, message);
 
       // ── Narration ──
       case 'code-change':
@@ -246,6 +264,10 @@ class WebSocketHandler {
     // Associate this client with the terminal session
     const client = this.clients.get(clientId);
     if (client) client.sessionId = sessionId;
+    
+    // Track analytics
+    this.analytics.trackTerminalSession();
+    
     this._send(clientId, { type: 'terminal-created', data: result });
   }
 
@@ -274,15 +296,44 @@ class WebSocketHandler {
     }
   }
 
+  // ─── Git handlers ──────────────────────────────────────────────────
+
+  async _handleGitStatus(clientId, msg) {
+    const summary = await this.gitManager.getSummary();
+    this._send(clientId, { type: 'git-summary', data: summary });
+  }
+
+  // ─── Collaboration handlers ───────────────────────────────────────
+
+  _handleCursorMove(clientId, msg) {
+    const client = this.clients.get(clientId);
+    if (client) {
+      client.cursor = msg.position;
+      // Broadcast to others (not self)
+      const data = JSON.stringify({ type: 'cursor-move', clientId, position: msg.position });
+      for (const [id, c] of this.clients) {
+        if (id !== clientId && c.ws.readyState === WebSocket.OPEN) {
+          c.ws.send(data);
+        }
+      }
+    }
+  }
+
   // ─── Narration handlers ───────────────────────────────────────────
 
   async _handleCodeChange(clientId, msg) {
     const { code, language, filename, tone, previousCode, summary } = msg;
 
+    let gitDiff = null;
+    if (filename) {
+      gitDiff = await this.gitManager.getDiff(filename);
+    }
+
     const codeChange = {
       before: previousCode || '',
       after: code,
       summary: summary || `Updated ${filename || 'code'}`,
+      gitDiff
     };
 
     const narration = await this.narrator.narrate(codeChange, {
@@ -292,6 +343,13 @@ class WebSocketHandler {
     });
 
     if (!narration) return;
+
+    // Track analytics
+    this.analytics.trackNarration(
+      this.narrator.currentLanguage,
+      this.narrator.currentTone,
+      this.narrator.currentLanguage
+    );
 
     const audioBuffer = await this.tts.synthesize(narration, this.narrator.currentLanguage);
 
@@ -353,12 +411,16 @@ class WebSocketHandler {
 
   async _handleNarrateWithThinking(clientId, msg) {
     try {
+      // Track analytics
+      this.analytics.trackThinkingSession();
+      
       await this.thinkingNarrator.startSession(msg.prompt, msg.codeContext, {
         persona: msg.persona,
         tone: msg.tone,
         enableAudio: msg.enableAudio,
       });
     } catch (err) {
+      this.analytics.trackError('thinking');
       this._send(clientId, { type: 'error', error: err.message });
     }
   }

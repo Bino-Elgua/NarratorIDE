@@ -13,6 +13,8 @@ const Narrator = require('./narrator');
 const TTSEngine = require('./tts');
 const FileSystemManager = require('./file-system');
 const TerminalManager = require('./terminal-manager');
+const GitManager = require('./git-manager');
+const AnalyticsService = require('./analytics-service');
 const ClawbotService = require('./clawbot-service');
 const ThinkingNarrator = require('./thinking-narrator');
 const WebSocketHandler = require('./websocket-handler');
@@ -28,18 +30,34 @@ app.use(express.json());
 // Determine workspace root (configurable via env)
 const WORKSPACE_ROOT = process.env.WORKSPACE_ROOT || process.cwd();
 
+// Auth Middleware (Phase 4)
+const authMiddleware = (req, res, next) => {
+  const apiKey = process.env.APP_API_KEY;
+  if (!apiKey) return next(); // No key set, allow all
+
+  const providedKey = req.headers['x-api-key'] || req.query.api_key;
+  if (providedKey !== apiKey) {
+    return res.status(401).json({ error: 'Unauthorized: Invalid API Key' });
+  }
+  next();
+};
+
+app.use('/api', authMiddleware);
+
 // Initialize services
 const narrator = new Narrator();
 const tts = new TTSEngine();
 const fileSystem = new FileSystemManager(WORKSPACE_ROOT);
 const terminalManager = new TerminalManager();
+const gitManager = new GitManager(WORKSPACE_ROOT);
+const analytics = new AnalyticsService();
 const clawbotService = new ClawbotService();
 const personaEngine = { getPersona, getTone };
 const thinkingNarrator = new ThinkingNarrator(clawbotService, tts, personaEngine);
 
 // Initialize centralized WebSocket handler
 const wsHandler = new WebSocketHandler(
-  wss, narrator, tts, fileSystem, terminalManager, clawbotService, thinkingNarrator
+  wss, narrator, tts, fileSystem, terminalManager, gitManager, analytics, clawbotService, thinkingNarrator
 );
 
 // Start file watching
@@ -98,6 +116,10 @@ app.get('/api/providers', (req, res) => {
     available: ['claude', 'ollama', 'hf', 'grok', 'kimi'],
     clawbot: !!clawbotService.apiKey
   });
+});
+
+app.get('/api/analytics', (req, res) => {
+  res.json(analytics.getStats());
 });
 
 app.post('/api/narrate', async (req, res) => {
