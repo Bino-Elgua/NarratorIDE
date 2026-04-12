@@ -1,27 +1,21 @@
 {
   "name": "narrator-ide",
   "version": "2.0.0",
-  "description": "Browser IDE with AI narration, thinking-mode voice, Monaco editor, terminal, and Clawbot agentic coding",
+  "description": "Narrator IDE - AI-powered IDE with real-time narration and multi-persona support",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "ext:build": "cd vscode-extension && npm install && npm run compile",
-    "ext:package": "cd vscode-extension && vsce package",
-    "setup": "npm install"
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
     "ide",
     "narration",
     "ai",
-    "vscode",
-    "monaco",
-    "terminal",
-    "clawbot",
-    "thinking",
-    "personas"
+    "llm",
+    "monaco"
   ],
-  "author": "LÉO",
+  "author": "",
   "license": "MIT",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.16.0",
