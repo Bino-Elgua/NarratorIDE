@@ -5,28 +5,22 @@
  */
 
 const WebSocket = require('ws');
+const path = require('path');
 
 class VibeWebSocketHandler {
   /**
-   * @param {import('./websocket-handler')} wsHandler   - Main WS handler (for _send / broadcast)
-   * @param {import('./vibe-orchestrator')} orchestrator
+   * @param {import('./websocket-handler')} wsHandler
+   * @param {import('./vibe-orchestrator').VibeOrchestrator} orchestrator
    * @param {import('./file-system')} fileSystem
    */
   constructor(wsHandler, orchestrator, fileSystem) {
     this.wsHandler = wsHandler;
     this.orchestrator = orchestrator;
     this.fileSystem = fileSystem;
-
-    /** @type {Map<string, { sessionId: string, abortFn: Function }>} */
     this.clientSessions = new Map();
   }
 
-  /**
-   * Handle an incoming vibe-start message from a client.
-   * Spawns the dual-model orchestration and streams events back.
-   */
   async handleVibeStart(clientId, msg) {
-    // Stop any prior session for this client
     this.handleVibeStop(clientId);
 
     const stream = this.orchestrator.startVibeSession(
@@ -39,61 +33,26 @@ class VibeWebSocketHandler {
       }
     );
 
-    // Track so we can abort later
     const controller = { sessionId: null, abortFn: () => {} };
     this.clientSessions.set(clientId, controller);
 
     try {
       for await (const event of stream) {
-        // Capture session ID
         if (event.sessionId && !controller.sessionId) {
           controller.sessionId = event.sessionId;
         }
 
-        // Check client is still connected
         if (!this.wsHandler.clients.has(clientId)) {
           this.orchestrator.stopSession(event.sessionId);
           break;
         }
 
-        // Forward event to client
+        // Forward all events to client
         this.wsHandler.sendTo(clientId, event);
 
-        // Execute file writes immediately on file-complete
+        // Write files on file-complete and update file tree
         if (event.type === 'file-complete' && event.file && event.code) {
-          try {
-            // Ensure parent directory exists
-            const path = require('path');
-            const dir = path.dirname(event.file);
-            if (dir && dir !== '.') {
-              await this.fileSystem.createDirectory(dir).catch(() => {});
-            }
-
-            await this.fileSystem.writeFile(event.file, event.code);
-            console.log(`[VibeWS] Written file: ${event.file} (${event.code.length} bytes)`);
-
-            // Broadcast file creation to all clients
-            this.wsHandler.broadcast({
-              type: 'file-created',
-              data: {
-                path: event.file,
-                size: event.code.length,
-                language: this._detectLanguage(event.file),
-              },
-            });
-
-            // Also broadcast as file-changed for tree refresh
-            this.wsHandler.broadcast({
-              type: 'file-changed',
-              data: { path: event.file, eventType: 'change' },
-            });
-          } catch (err) {
-            console.error(`[VibeWS] Failed to write ${event.file}:`, err.message);
-            this.wsHandler.sendTo(clientId, {
-              type: 'error',
-              error: `Failed to write ${event.file}: ${err.message}`,
-            });
-          }
+          await this._writeFileAndUpdateTree(clientId, event);
         }
       }
     } catch (err) {
@@ -104,30 +63,47 @@ class VibeWebSocketHandler {
     }
   }
 
-  /**
-   * Stop an active vibe session for a client.
-   */
+  async _writeFileAndUpdateTree(clientId, event) {
+    try {
+      const dir = path.dirname(event.file);
+      if (dir && dir !== '.') {
+        await this.fileSystem.createDirectory(dir).catch(() => {});
+      }
+
+      await this.fileSystem.writeFile(event.file, event.code);
+      console.log(`[VibeWS] Written file: ${event.file} (${event.code.length} bytes)`);
+
+      // Send file content for editor (LEFT PANEL)
+      this.wsHandler.sendTo(clientId, {
+        type: 'file-content',
+        path: event.file,
+        data: { content: event.code },
+        isNew: true,
+        language: event.language,
+      });
+
+      // Refresh file tree (LEFT PANEL)
+      try {
+        const tree = await this.fileSystem.getTree('.');
+        this.wsHandler.sendTo(clientId, { type: 'file-tree', data: tree });
+      } catch (err) {
+        console.error('[VibeWS] Tree refresh failed:', err.message);
+      }
+    } catch (err) {
+      console.error(`[VibeWS] Failed to write ${event.file}:`, err.message);
+      this.wsHandler.sendTo(clientId, {
+        type: 'error',
+        error: `Failed to write ${event.file}: ${err.message}`,
+      });
+    }
+  }
+
   handleVibeStop(clientId) {
     const session = this.clientSessions.get(clientId);
     if (session && session.sessionId) {
       this.orchestrator.stopSession(session.sessionId);
     }
     this.clientSessions.delete(clientId);
-  }
-
-  /**
-   * Detect language from file extension
-   */
-  _detectLanguage(filePath) {
-    const ext = require('path').extname(filePath).toLowerCase();
-    const map = {
-      '.js': 'javascript', '.jsx': 'javascript',
-      '.ts': 'typescript', '.tsx': 'typescript',
-      '.py': 'python', '.rs': 'rust', '.go': 'go',
-      '.java': 'java', '.html': 'html', '.css': 'css',
-      '.json': 'json', '.md': 'markdown', '.sh': 'bash',
-    };
-    return map[ext] || 'plaintext';
   }
 }
 

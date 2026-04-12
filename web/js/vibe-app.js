@@ -1,7 +1,7 @@
 /**
- * Vibe App — Client-side WebSocket controller for NarratorIDE Vibe Coder.
- * Connects to the server at ws://localhost:3002, handles all WS event types,
- * streams code into Monaco Editor, and displays narration/status in the UI.
+ * Vibe App v2 — Multi-Agent Architecture
+ * LEFT: File tree + Editor (IDE structure)
+ * RIGHT: Multi-agent chat feed with persona-voiced narration
  */
 
 export class VibeApp {
@@ -14,8 +14,9 @@ export class VibeApp {
     this.sessionActive = false;
     this.openFiles = new Map();   // path → model
     this.activeFile = null;
+    this.agents = new Map();      // id → agent info
+    this.currentAgent = null;
 
-    // DOM handles (resolved in init)
     this.dom = {};
   }
 
@@ -51,22 +52,18 @@ export class VibeApp {
   }
 
   _bindUI() {
-    // Build button
     this.dom.sendBtn.addEventListener('click', () => this._startSession());
     this.dom.prompt.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this._startSession(); }
     });
 
-    // Stop button
     this.dom.stopBtn.addEventListener('click', () => this._stopSession());
 
-    // Mute toggle
     this.dom.muteBtn.addEventListener('click', () => {
       this.isMuted = !this.isMuted;
       this.dom.muteBtn.textContent = this.isMuted ? '🔇' : '🔊';
     });
 
-    // Chat send
     this.dom.chatSendBtn.addEventListener('click', () => this._sendChat());
     this.dom.chatInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this._sendChat(); }
@@ -106,7 +103,7 @@ export class VibeApp {
     this.ws.addEventListener('open', () => {
       this._setCoderStatus('ready', 'Coder: Ready');
       this._setNarratorStatus('ready', 'Narrator: Ready');
-      this._addNarrationBubble('system', 'Connected to NarratorIDE server.');
+      this._addSystemMessage('Connected to NarratorIDE server.');
     });
 
     this.ws.addEventListener('message', (event) => {
@@ -119,7 +116,7 @@ export class VibeApp {
     this.ws.addEventListener('close', () => {
       this._setCoderStatus('disconnected', 'Coder: Disconnected');
       this._setNarratorStatus('disconnected', 'Narrator: Disconnected');
-      this._addNarrationBubble('system', 'Disconnected. Reconnecting…');
+      this._addSystemMessage('Disconnected. Reconnecting…');
       setTimeout(() => this._connectWebSocket(), 3000);
     });
 
@@ -149,72 +146,73 @@ export class VibeApp {
         this.sessionActive = false;
         this._setCoderStatus('ready', 'Coder: Done');
         this._setNarratorStatus('ready', 'Narrator: Idle');
-        this._addNarrationBubble('system', 'Session complete.');
+        this._addSystemMessage('Session complete.');
         this._setUIBusy(false);
         break;
 
-      // ── Narration ──
+      // ── Multi-Agent events (RIGHT PANEL) ──
+      case 'agents-available':
+        return this._setupAgents(msg.agents);
+
+      case 'agent-switch':
+        return this._switchAgent(msg.agent, msg.persona);
+
+      case 'agent-message':
+        return this._addAgentMessage(msg.agent, msg.text, msg.audio);
+
+      // ── Legacy narration (still supported) ──
       case 'narration':
-        this._onNarration(msg);
-        break;
-
       case 'thinking-narration':
-      case 'action-narration':
       case 'output-narration':
-        this._onNarration(msg.data || msg);
+        return this._onLegacyNarration(msg.data || msg);
+
+      case 'action-narration':
+        // Suppress — file actions go to the file tree, not chat
         break;
 
-      // ── Code streaming ──
+      // ── Code streaming (LEFT PANEL - Editor) ──
       case 'code':
-        this._onCodeChunk(msg);
+        return this._onCodeChunk(msg);
+
+      case 'file-start':
+        this._setCoderStatus('coding', `Coder: Creating ${msg.file}`);
+        if (this.dom.currentFile) this.dom.currentFile.textContent = msg.file;
         break;
 
       case 'file-complete':
-        this._onFileComplete(msg);
-        break;
+        return this._onFileComplete(msg);
 
-      // ── Thinking ──
+      // ── Thinking (suppressed from chat — narrator handles it) ──
       case 'thinking':
       case 'thinking-chunk':
-        this._onThinking(msg);
+        this._setCoderStatus('thinking', 'Coder: Thinking…');
         break;
 
-      // ── File system ──
+      // ── File system (LEFT PANEL - Tree) ──
       case 'file-tree':
-        this._renderFileTree(msg.data);
-        break;
+        return this._renderFileTree(msg.data);
 
       case 'file-content':
-        this._openFileInEditor(msg.path, msg.data);
-        break;
+        return this._openFileInEditor(msg.path, msg.data);
 
       case 'file-created':
-        this._onFileCreated(msg.data || msg);
-        break;
-
       case 'file-changed':
-        this._onFileChanged(msg.data);
-        break;
-
-      case 'file-write':
-        this._onFileChanged(msg.data || msg);
-        break;
+        // Just refresh tree — NO chat bubbles for file events
+        return this._refreshFileTree();
 
       // ── State ──
       case 'state':
-        this._onState(msg.data);
-        break;
+        return this._onState(msg.data);
 
       // ── Errors ──
       case 'error':
-        this._addNarrationBubble('error', msg.error || msg.content || 'Unknown error');
+        this._addSystemMessage(`❌ ${msg.error || msg.content || 'Unknown error'}`);
         this._setUIBusy(false);
         break;
 
-      // ── Persona / tone changes ──
       case 'persona-changed':
       case 'tone-changed':
-        break; // ack, no UI action needed
+        break;
 
       default:
         break;
@@ -246,7 +244,7 @@ export class VibeApp {
     this.sessionActive = false;
     this._setUIBusy(false);
     this._setCoderStatus('ready', 'Coder: Stopped');
-    this._addNarrationBubble('system', 'Session stopped by user.');
+    this._addSystemMessage('Session stopped by user.');
   }
 
   _sendChat() {
@@ -255,7 +253,6 @@ export class VibeApp {
     this.dom.chatInput.value = '';
     this._addChatMessage('user', text);
 
-    // If a session is active, treat as follow-up prompt; otherwise start new
     if (this.sessionActive) {
       this._send({ type: 'vibe-start', prompt: text, persona: this.dom.personaSelect.value, enableAudio: !this.isMuted });
     } else {
@@ -270,34 +267,88 @@ export class VibeApp {
     this.dom.sendBtn.textContent = busy ? 'Building…' : 'Build';
   }
 
-  // ─── Narration ─────────────────────────────────────────────────
+  // ─── Multi-Agent Chat (RIGHT PANEL) ────────────────────────────
 
-  _onNarration(msg) {
-    const text = msg.text || msg.content || '';
-    if (!text) return;
+  _setupAgents(agents) {
+    if (!agents) return;
+    agents.forEach(agent => this.agents.set(agent.id, agent));
+  }
 
-    this._setNarratorStatus('speaking', 'Narrator: Speaking');
-    this._addNarrationBubble('narration', text, msg.persona);
-    this._addChatMessage('ai', text);
+  _switchAgent(agentId, persona) {
+    this.currentAgent = agentId;
+    if (this.dom.narrationStatus && persona) {
+      this.dom.narrationStatus.innerHTML = `${persona.icon} <span style="color:${persona.color}">${persona.displayName}</span> is coding…`;
+    }
+  }
 
-    if (msg.audio && !this.isMuted) {
-      this._playAudio(msg.audio);
+  _addAgentMessage(agent, text, audioBase64) {
+    if (!agent || !text) return;
+    const chatHistory = this.dom.chatHistory;
+
+    this._setNarratorStatus('speaking', `${agent.name}: Speaking`);
+
+    const msgEl = document.createElement('div');
+    msgEl.className = 'agent-message';
+    msgEl.style.borderLeft = `3px solid ${agent.color}`;
+
+    const header = document.createElement('div');
+    header.className = 'agent-header';
+    header.innerHTML = `
+      <span class="agent-icon">${agent.icon}</span>
+      <span class="agent-name" style="color:${agent.color}">${agent.displayName}</span>
+      <span class="agent-time">${new Date().toLocaleTimeString()}</span>
+    `;
+
+    const body = document.createElement('div');
+    body.className = 'agent-text';
+    body.textContent = text;
+
+    msgEl.appendChild(header);
+    msgEl.appendChild(body);
+    chatHistory.appendChild(msgEl);
+    chatHistory.scrollTop = chatHistory.scrollHeight;
+
+    // Play audio
+    if (audioBase64 && !this.isMuted) {
+      this._playAudio(audioBase64);
+    } else if (!this.isMuted) {
+      this._speakWithAgentVoice(text, agent.id);
     }
 
-    // Reset narrator status after a short delay
     setTimeout(() => {
       if (!this.sessionActive) this._setNarratorStatus('ready', 'Narrator: Idle');
     }, 3000);
   }
 
-  _onThinking(msg) {
-    const text = msg.content || (msg.data && msg.data.content) || '';
+  _onLegacyNarration(msg) {
+    const text = msg.text || msg.content || '';
     if (!text) return;
-    this._setCoderStatus('thinking', 'Coder: Thinking…');
-    this._addNarrationBubble('thinking', text);
+
+    this._setNarratorStatus('speaking', 'Narrator: Speaking');
+
+    // Show as generic agent message
+    const persona = msg.persona || 'javascript';
+    const agentInfo = this.agents.get(persona) || {
+      icon: '🤖', name: 'AI', displayName: 'AI Assistant', color: '#667eea'
+    };
+
+    this._addAgentMessage(
+      { id: persona, ...agentInfo },
+      text,
+      msg.audio
+    );
   }
 
-  // ─── Code Chunks → Monaco ─────────────────────────────────────
+  _addSystemMessage(text) {
+    const chatHistory = this.dom.chatHistory;
+    const msgEl = document.createElement('div');
+    msgEl.className = 'system-message';
+    msgEl.textContent = text;
+    chatHistory.appendChild(msgEl);
+    chatHistory.scrollTop = chatHistory.scrollHeight;
+  }
+
+  // ─── Code Chunks → Monaco (LEFT PANEL) ────────────────────────
 
   _onCodeChunk(msg) {
     const file = msg.file || 'untitled';
@@ -306,7 +357,6 @@ export class VibeApp {
     this._setCoderStatus('coding', `Coder: Writing ${file}`);
     if (this.dom.currentFile) this.dom.currentFile.textContent = file;
 
-    // Get or create a model for this file
     let model = this.openFiles.get(file);
     if (!model) {
       const lang = this._guessLanguage(file);
@@ -315,20 +365,17 @@ export class VibeApp {
       this._addTab(file);
     }
 
-    // Append the chunk to the model
     const lineCount = model.getLineCount();
     const lastLineLength = model.getLineMaxColumn(lineCount);
     const range = new monaco.Range(lineCount, lastLineLength, lineCount, lastLineLength);
     model.applyEdits([{ range, text: content }]);
 
-    // Switch editor to this file if different
     if (this.activeFile !== file) {
       this.editor.setModel(model);
       this.activeFile = file;
       this._activateTab(file);
     }
 
-    // Scroll to bottom
     const newLineCount = model.getLineCount();
     this.editor.revealLine(newLineCount);
   }
@@ -337,7 +384,6 @@ export class VibeApp {
     const file = msg.file;
     const code = msg.code || '';
 
-    // Ensure model has the final complete content
     let model = this.openFiles.get(file);
     if (!model) {
       const lang = this._guessLanguage(file);
@@ -348,25 +394,11 @@ export class VibeApp {
       model.setValue(code);
     }
 
-    this._addNarrationBubble('action', `✅ File written: ${file}`);
+    // NO narration bubble — file tree handles this
     this._refreshFileTree();
   }
 
-  // ─── File System ───────────────────────────────────────────────
-
-  _onFileCreated(data) {
-    if (data && data.path) {
-      this._addNarrationBubble('action', `📁 Created: ${data.path} (${data.size || 0} bytes)`);
-    }
-    this._refreshFileTree();
-  }
-
-  _onFileChanged(data) {
-    if (data && data.path) {
-      this._addNarrationBubble('action', `📄 File changed: ${data.path}`);
-    }
-    this._refreshFileTree();
-  }
+  // ─── File System (LEFT PANEL) ──────────────────────────────────
 
   _refreshFileTree() {
     this._send({ type: 'editor-tree' });
@@ -385,11 +417,12 @@ export class VibeApp {
       el.style.paddingLeft = `${10 + depth * 14}px`;
 
       if (node.type === 'directory') {
-        el.textContent = `📁 ${node.name}`;
+        el.innerHTML = `<span class="tree-icon">📁</span> ${this._escapeHtml(node.name)}`;
         container.appendChild(el);
         if (node.children) this._renderTreeNodes(node.children, container, depth + 1);
       } else {
-        el.textContent = `📄 ${node.name}`;
+        const icon = this._getFileIcon(node.name);
+        el.innerHTML = `<span class="tree-icon">${icon}</span> ${this._escapeHtml(node.name)}`;
         el.addEventListener('click', () => {
           this._send({ type: 'editor-open', path: node.path });
         });
@@ -449,33 +482,7 @@ export class VibeApp {
     });
   }
 
-  // ─── Narration Panel ───────────────────────────────────────────
-
-  _addNarrationBubble(kind, text, persona) {
-    const bubble = document.createElement('div');
-    bubble.className = 'vibe-thought-bubble';
-
-    if (kind === 'action') bubble.classList.add('vibe-action-bubble');
-    if (kind === 'error') bubble.style.borderLeftColor = '#ef4444';
-    if (kind === 'thinking') bubble.style.borderLeftColor = '#f59e0b';
-    if (kind === 'system') bubble.style.borderLeftColor = '#10b981';
-
-    if (persona) {
-      const tag = document.createElement('div');
-      tag.className = 'vibe-thought-persona';
-      tag.textContent = persona;
-      bubble.appendChild(tag);
-    }
-
-    const body = document.createElement('div');
-    body.textContent = text;
-    bubble.appendChild(body);
-
-    this.dom.narrationPanel.appendChild(bubble);
-    this.dom.narrationPanel.scrollTop = this.dom.narrationPanel.scrollHeight;
-  }
-
-  // ─── Chat History ──────────────────────────────────────────────
+  // ─── Chat Panel (RIGHT PANEL) ─────────────────────────────────
 
   _addChatMessage(role, text) {
     const msg = document.createElement('div');
@@ -525,6 +532,24 @@ export class VibeApp {
     audio.play().catch(() => this._drainAudioQueue());
   }
 
+  _speakWithAgentVoice(text, agentId) {
+    if (!window.speechSynthesis) return;
+    const utterance = new SpeechSynthesisUtterance(text);
+
+    switch (agentId) {
+      case 'javascript': utterance.rate = 1.3; utterance.pitch = 1.1; break;
+      case 'rust':       utterance.rate = 0.9; utterance.pitch = 0.95; break;
+      case 'python':     utterance.rate = 1.1; utterance.pitch = 1.0; break;
+      case 'go':         utterance.rate = 1.2; utterance.pitch = 1.0; break;
+      case 'c':          utterance.rate = 0.85; utterance.pitch = 0.9; break;
+      case 'java':       utterance.rate = 1.0; utterance.pitch = 0.95; break;
+      case 'lisp':       utterance.rate = 0.8; utterance.pitch = 1.05; break;
+      default:           utterance.rate = 1.0; utterance.pitch = 1.0;
+    }
+
+    window.speechSynthesis.speak(utterance);
+  }
+
   // ─── Helpers ───────────────────────────────────────────────────
 
   _guessLanguage(filepath) {
@@ -538,5 +563,25 @@ export class VibeApp {
       sql: 'sql', xml: 'xml', toml: 'ini', dockerfile: 'dockerfile',
     };
     return map[ext] || 'plaintext';
+  }
+
+  _getFileIcon(filename) {
+    const ext = (filename || '').split('.').pop().toLowerCase();
+    const icons = {
+      js: '⚡', jsx: '⚛️', ts: '🔷', tsx: '🔷',
+      py: '🐍', rs: '🦀', go: '🐹', java: '☕',
+      c: '🔧', cpp: '🔧', h: '📎',
+      html: '🌐', css: '🎨', scss: '🎨',
+      json: '📋', yaml: '📋', yml: '📋',
+      md: '📝', sh: '💻', bash: '💻',
+      sql: '🗃️', xml: '📄', toml: '⚙️',
+    };
+    return icons[ext] || '📄';
+  }
+
+  _escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
   }
 }

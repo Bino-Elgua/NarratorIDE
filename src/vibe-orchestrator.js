@@ -1,48 +1,60 @@
 /**
- * Vibe Orchestrator - Dual-Model Synchronized Workflow
- * Model A (Kimi K2.5 Coder via Ollama): Generates code with reasoning
- * Model B (Local Ollama - Qwen/Llama): Converts reasoning to persona-voiced TTS
- *
- * The magic: While Kimi types code, the narrator model speaks Kimi's thoughts
- * in real-time, creating a "pair programmer" experience.
+ * Vibe Orchestrator v2 - Multi-Agent Architecture
+ * Model A (Kimi K2.5): Generates code, provides raw thinking
+ * Model B (Narrator): Converts thinking to persona-voiced responses
+ * Key: Dynamic persona switching based on detected language
  */
 
 const { EventEmitter } = require('events');
 const axios = require('axios');
+const path = require('path');
 const { getPersona } = require('./personas');
 
+const AGENT_PERSONAS = {
+  javascript: {
+    name: 'Jax', displayName: 'Jax (JavaScript)',
+    icon: '⚡', color: '#f7df1e', voice: 'energetic',
+  },
+  typescript: {
+    name: 'Alex', displayName: 'Alex (TypeScript)',
+    icon: '🔷', color: '#3178c6', voice: 'methodical',
+  },
+  python: {
+    name: 'Sam', displayName: 'Sam (Python)',
+    icon: '🐍', color: '#3776ab', voice: 'friendly',
+  },
+  rust: {
+    name: 'Ruby', displayName: 'Ruby (Rust)',
+    icon: '🦀', color: '#dea584', voice: 'careful',
+  },
+  go: {
+    name: 'Gordon', displayName: 'Gordon (Go)',
+    icon: '🐹', color: '#00add8', voice: 'direct',
+  },
+  java: {
+    name: 'Jay', displayName: 'Jay (Java)',
+    icon: '☕', color: '#b07219', voice: 'formal',
+  },
+  c: {
+    name: 'Cecil', displayName: 'Cecil (C)',
+    icon: '🔧', color: '#555555', voice: 'wise',
+  },
+  lisp: {
+    name: 'Luna', displayName: 'Luna (Lisp)',
+    icon: 'λ', color: '#3fb68b', voice: 'meditative',
+  },
+};
+
 class VibeOrchestrator extends EventEmitter {
-  /**
-   * @param {object} options
-   * @param {string} [options.coderModel]    - Ollama model for code generation
-   * @param {string} [options.narratorModel] - Ollama model for narration conversion
-   * @param {string} [options.ollamaUrl]     - Ollama API base URL
-   * @param {import('./tts')} options.tts    - TTS engine instance
-   */
   constructor(options = {}) {
     super();
-
     this.coderModel = options.coderModel || process.env.VIBE_CODER_MODEL || process.env.OLLAMA_MODEL || 'kimi-k2.5:cloud';
     this.narratorModel = options.narratorModel || process.env.VIBE_NARRATOR_MODEL || 'qwen2.5:7b';
     this.ollamaUrl = options.ollamaUrl || process.env.OLLAMA_URL || 'http://localhost:11434';
     this.tts = options.tts || null;
-
-    /** @type {Map<string, VibeSession>} */
     this.activeSessions = new Map();
   }
 
-  /**
-   * Start a vibe coding session.
-   * Returns an async iterable of events for the WebSocket layer to forward.
-   *
-   * @param {string} prompt      - User's natural language request
-   * @param {object} context     - Current project state
-   * @param {object} [opts]
-   * @param {string} [opts.persona]
-   * @param {string} [opts.tone]
-   * @param {boolean} [opts.enableAudio]
-   * @yields {VibeEvent}
-   */
   async *startVibeSession(prompt, context, opts = {}) {
     const sessionId = `vibe-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const session = {
@@ -53,21 +65,30 @@ class VibeOrchestrator extends EventEmitter {
       tone: opts.tone || 'casual',
       enableAudio: opts.enableAudio !== false,
       isActive: true,
+      currentAgent: null,
+      pendingThinking: [],
     };
 
     this.activeSessions.set(sessionId, session);
     this.emit('session-start', { sessionId, prompt });
 
-    try {
-      // ── Phase 1: Stream code from Kimi while collecting thinking ──
-      // We accumulate thinking chunks and periodically convert them to
-      // persona narration via the local narrator model.
+    // Send available agents at session start
+    yield {
+      type: 'agents-available',
+      agents: Object.entries(AGENT_PERSONAS).map(([id, p]) => ({
+        id, name: p.name, displayName: p.displayName,
+        icon: p.icon, color: p.color,
+      })),
+      sessionId,
+    };
 
+    try {
       let thinkingBuffer = '';
       let narratorBusy = false;
       let currentFile = null;
       let currentCode = '';
-      let fileIndex = 0;
+      let inCodeBlock = false;
+      let codeBlockFile = null;
 
       const flushNarration = async () => {
         if (!thinkingBuffer.trim() || narratorBusy) return null;
@@ -76,17 +97,26 @@ class VibeOrchestrator extends EventEmitter {
         thinkingBuffer = '';
 
         try {
-          const narrationText = await this._convertToPersonaVoice(thoughts, session.persona, session.tone);
+          const agentId = session.currentAgent || session.persona;
+          const agentInfo = AGENT_PERSONAS[agentId] || AGENT_PERSONAS.javascript;
+
+          const narrationText = await this._convertToPersonaVoice(thoughts, agentId, session.tone);
           let audio = null;
           if (session.enableAudio && this.tts) {
-            const buf = await this.tts.synthesize(narrationText, session.persona);
+            const buf = await this.tts.synthesize(narrationText, agentId);
             if (buf) audio = buf.toString('base64');
           }
           return {
-            type: 'narration',
+            type: 'agent-message',
+            agent: {
+              id: agentId,
+              name: agentInfo.name,
+              displayName: agentInfo.displayName,
+              icon: agentInfo.icon,
+              color: agentInfo.color,
+            },
             text: narrationText,
             audio,
-            persona: session.persona,
             timestamp: Date.now(),
             sessionId,
           };
@@ -98,10 +128,8 @@ class VibeOrchestrator extends EventEmitter {
         }
       };
 
-      // Stream from Kimi
       const coderStream = this._streamCoder(prompt, context, session);
 
-      // Narration flush timer — every ~2s, convert buffered thoughts
       let narrationInterval;
       const pendingNarrations = [];
 
@@ -110,16 +138,12 @@ class VibeOrchestrator extends EventEmitter {
         if (n) pendingNarrations.push(n);
       }, 2000);
 
-      // Line buffer for detecting file delimiters across streamed chunks
       let lineBuffer = '';
-      let inCodeBlock = false;       // track markdown ```lang:path blocks as fallback
-      let codeBlockFile = null;
 
       try {
         for await (const chunk of coderStream) {
           if (!session.isActive) break;
 
-          // Collect thinking
           if (chunk.thinking) {
             thinkingBuffer += ' ' + chunk.thinking;
             yield {
@@ -130,35 +154,45 @@ class VibeOrchestrator extends EventEmitter {
             };
           }
 
-          // Process code text line-by-line for file boundary detection
           if (chunk.code) {
             lineBuffer += chunk.code;
             const lines = lineBuffer.split('\n');
-            lineBuffer = lines.pop(); // keep last incomplete line
+            lineBuffer = lines.pop();
 
             for (const line of lines) {
               const result = this._processLine(line, currentFile, inCodeBlock, codeBlockFile);
 
               if (result.fileStart) {
-                // Yield previous file if exists
                 if (currentFile && currentCode) {
                   yield {
                     type: 'file-complete',
                     file: currentFile,
                     code: currentCode.trimEnd(),
+                    language: this._detectLanguage(currentFile),
                     sessionId,
                   };
                 }
                 currentFile = result.fileStart;
                 currentCode = '';
-                fileIndex++;
                 inCodeBlock = result.inCodeBlock || false;
                 codeBlockFile = result.codeBlockFile || null;
 
+                // Detect language and switch agent
+                const lang = this._detectLanguage(currentFile);
+                if (lang && AGENT_PERSONAS[lang] && lang !== session.currentAgent) {
+                  session.currentAgent = lang;
+                  yield {
+                    type: 'agent-switch',
+                    agent: lang,
+                    persona: AGENT_PERSONAS[lang],
+                    sessionId,
+                  };
+                }
+
                 yield {
-                  type: 'action-narration',
-                  action: 'create-file',
-                  text: `Creating ${currentFile}...`,
+                  type: 'file-start',
+                  file: currentFile,
+                  language: lang,
                   sessionId,
                 };
                 continue;
@@ -170,6 +204,7 @@ class VibeOrchestrator extends EventEmitter {
                     type: 'file-complete',
                     file: currentFile,
                     code: currentCode.trimEnd(),
+                    language: this._detectLanguage(currentFile),
                     sessionId,
                   };
                 }
@@ -180,7 +215,6 @@ class VibeOrchestrator extends EventEmitter {
                 continue;
               }
 
-              // Update code block state
               if (result.inCodeBlock !== undefined) inCodeBlock = result.inCodeBlock;
               if (result.codeBlockFile !== undefined) codeBlockFile = result.codeBlockFile;
 
@@ -193,7 +227,6 @@ class VibeOrchestrator extends EventEmitter {
                   sessionId,
                 };
               } else if (result.codeLine !== undefined && !currentFile) {
-                // Text outside any file — treat as thinking
                 if (result.codeLine.trim()) {
                   thinkingBuffer += ' ' + result.codeLine;
                 }
@@ -201,13 +234,11 @@ class VibeOrchestrator extends EventEmitter {
             }
           }
 
-          // Drain any pending narrations
           while (pendingNarrations.length > 0) {
             yield pendingNarrations.shift();
           }
         }
 
-        // Process remaining lineBuffer
         if (lineBuffer.trim() && currentFile) {
           currentCode += lineBuffer;
           yield {
@@ -221,21 +252,19 @@ class VibeOrchestrator extends EventEmitter {
         clearInterval(narrationInterval);
       }
 
-      // Final file
       if (currentFile && currentCode) {
         yield {
           type: 'file-complete',
           file: currentFile,
           code: currentCode.trimEnd(),
+          language: this._detectLanguage(currentFile),
           sessionId,
         };
       }
 
-      // Final narration flush
       const finalNarration = await flushNarration();
       if (finalNarration) yield finalNarration;
 
-      // Drain remaining
       while (pendingNarrations.length > 0) {
         yield pendingNarrations.shift();
       }
@@ -251,9 +280,6 @@ class VibeOrchestrator extends EventEmitter {
     }
   }
 
-  /**
-   * Stop an active session
-   */
   stopSession(sessionId) {
     const session = this.activeSessions.get(sessionId);
     if (session) session.isActive = false;
@@ -261,12 +287,6 @@ class VibeOrchestrator extends EventEmitter {
 
   // ─── Model A: Kimi K2.5 Coder (Ollama streaming) ──────────────────
 
-  /**
-   * Stream code generation from the coder model.
-   * Extracts thinking/reasoning separately from code output.
-   * Uses ===FILE:path=== / ===ENDFILE=== delimiters for reliable multi-file parsing.
-   * @yields {{ thinking?: string, code?: string, fileStart?: string, fileEnd?: boolean }}
-   */
   async *_streamCoder(prompt, context, session) {
     const systemPrompt = `You are an expert full-stack developer. Given a user request, generate production-quality code.
 
@@ -314,17 +334,14 @@ Current project context: ${JSON.stringify(context || {})}`;
     });
 
     let buffer = '';
-    // Accumulate full text to parse file boundaries line-by-line
-    let textAccum = '';
 
     for await (const rawChunk of response.data) {
       if (!session.isActive) break;
 
       buffer += rawChunk.toString();
 
-      // Ollama streams newline-delimited JSON
       const lines = buffer.split('\n');
-      buffer = lines.pop(); // keep incomplete line
+      buffer = lines.pop();
 
       for (const line of lines) {
         if (!line.trim()) continue;
@@ -338,24 +355,16 @@ Current project context: ${JSON.stringify(context || {})}`;
         const text = parsed.response || '';
         if (!text) continue;
 
-        // Extract thinking from <think> tags or reasoning_content
         const thinkMatch = text.match(/<think>([\s\S]*?)<\/think>/);
         if (thinkMatch) {
           const thinking = thinkMatch[1].trim();
           const remainder = text.replace(/<think>[\s\S]*?<\/think>/, '');
           if (thinking) yield { thinking };
-          if (remainder.trim()) {
-            textAccum += remainder;
-            yield { code: remainder };
-          }
+          if (remainder.trim()) yield { code: remainder };
         } else if (parsed.reasoning_content) {
           yield { thinking: parsed.reasoning_content };
-          if (text) {
-            textAccum += text;
-            yield { code: text };
-          }
+          if (text) yield { code: text };
         } else {
-          textAccum += text;
           yield { code: text };
         }
 
@@ -363,24 +372,16 @@ Current project context: ${JSON.stringify(context || {})}`;
       }
     }
 
-    // Process remaining buffer
     if (buffer.trim()) {
       try {
         const parsed = JSON.parse(buffer);
-        if (parsed.response) {
-          textAccum += parsed.response;
-          yield { code: parsed.response };
-        }
+        if (parsed.response) yield { code: parsed.response };
       } catch { /* ignore */ }
     }
   }
 
   // ─── Model B: Local Narrator (Ollama) ──────────────────────────────
 
-  /**
-   * Convert dry thinking/reasoning into persona-voiced narration
-   * using a lightweight local model.
-   */
   async _convertToPersonaVoice(thinking, persona, tone) {
     const personaData = getPersona(persona);
 
@@ -408,30 +409,28 @@ Respond with ONLY the spoken narration, no quotes, no prefixes.`;
       return (response.data.response || '').trim() || thinking;
     } catch (err) {
       console.error('[VibeOrchestrator] narrator model error:', err.message);
-      // Fallback: return raw thinking
       return thinking;
     }
   }
 
   // ─── Helpers ───────────────────────────────────────────────────────
 
-  /**
-   * Process a single line of model output to detect file boundaries.
-   * Supports two formats:
-   *   1. ===FILE:path===  /  ===ENDFILE===   (primary, prompted)
-   *   2. ```lang:path     /  ```             (fallback for markdown-style output)
-   *   3. // File: path  or  # File: path     (comment-style fallback)
-   *
-   * @param {string} line
-   * @param {string|null} currentFile
-   * @param {boolean} inCodeBlock - whether we're inside a ```...``` block
-   * @param {string|null} codeBlockFile - file path from a ``` header
-   * @returns {object} result with fileStart, fileEnd, codeLine, inCodeBlock, codeBlockFile
-   */
+  _detectLanguage(filepath) {
+    const ext = path.extname(filepath).toLowerCase();
+    const map = {
+      '.js': 'javascript', '.jsx': 'javascript',
+      '.ts': 'typescript', '.tsx': 'typescript',
+      '.py': 'python', '.rs': 'rust', '.go': 'go',
+      '.java': 'java', '.c': 'c', '.cpp': 'c',
+      '.html': 'html', '.css': 'css', '.json': 'json',
+      '.md': 'markdown', '.sh': 'bash',
+    };
+    return map[ext] || 'javascript';
+  }
+
   _processLine(line, currentFile, inCodeBlock, codeBlockFile) {
     const trimmed = line.trim();
 
-    // ── Primary format: ===FILE:path=== ──
     const fileHeaderMatch = trimmed.match(/^={2,}FILE:\s*(.+?)={2,}\s*$/);
     if (fileHeaderMatch) {
       return {
@@ -441,7 +440,6 @@ Respond with ONLY the spoken narration, no quotes, no prefixes.`;
       };
     }
 
-    // ── Primary format: ===ENDFILE=== ──
     if (/^={2,}ENDFILE={2,}\s*$/.test(trimmed)) {
       return {
         fileEnd: true,
@@ -450,7 +448,6 @@ Respond with ONLY the spoken narration, no quotes, no prefixes.`;
       };
     }
 
-    // ── Fallback: ```lang:filepath or ```filepath ──
     const codeBlockStart = trimmed.match(/^```(\w+):(.+)$/);
     if (codeBlockStart) {
       return {
@@ -460,7 +457,6 @@ Respond with ONLY the spoken narration, no quotes, no prefixes.`;
       };
     }
 
-    // ── Closing ``` for a code block that started a file ──
     if (inCodeBlock && /^```\s*$/.test(trimmed)) {
       return {
         fileEnd: true,
@@ -469,7 +465,6 @@ Respond with ONLY the spoken narration, no quotes, no prefixes.`;
       };
     }
 
-    // ── Comment-style: // File: path  or  # File: path ──
     if (!currentFile) {
       const commentMatch = trimmed.match(/^(?:\/\/|#)\s*(?:File|filename):\s*(\S+)/i);
       if (commentMatch) {
@@ -481,9 +476,8 @@ Respond with ONLY the spoken narration, no quotes, no prefixes.`;
       }
     }
 
-    // ── Regular code/text line ──
     return { codeLine: line };
   }
 }
 
-module.exports = VibeOrchestrator;
+module.exports = { VibeOrchestrator, AGENT_PERSONAS };

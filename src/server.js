@@ -18,7 +18,7 @@ const AnalyticsService = require('./analytics-service');
 const ClawbotService = require('./clawbot-service');
 const ThinkingNarrator = require('./thinking-narrator');
 const WebSocketHandler = require('./websocket-handler');
-const VibeOrchestrator = require('./vibe-orchestrator');
+const { VibeOrchestrator, AGENT_PERSONAS } = require('./vibe-orchestrator');
 const VibeWebSocketHandler = require('./websocket-vibe-handler');
 const { PERSONAS, TONES, getPersona, getTone } = require('./personas');
 

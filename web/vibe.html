@@ -168,7 +168,7 @@
 
     #monaco-container { flex: 1; overflow: hidden; }
 
-    /* ── Right Panel ───────────────────────────────────────────── */
+    /* ── Right Panel: Multi-Agent Chat ────────────────────────── */
     .vibe-right-panel {
       background: #111;
       display: flex;
@@ -176,74 +176,14 @@
       overflow: hidden;
     }
 
-    /* Narration */
-    .vibe-narration {
-      flex: 1;
-      padding: 12px;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-
-    .vibe-narration-header {
-      font-size: 11px;
-      text-transform: uppercase;
-      color: #666;
-      letter-spacing: 0.5px;
+    .vibe-agent-status {
+      font-size: 12px;
+      color: #888;
+      padding: 10px 12px;
+      border-bottom: 1px solid #1a1a1a;
       display: flex;
       align-items: center;
       gap: 6px;
-    }
-    .vibe-narration-header::before { content: '🔊'; }
-    .vibe-narration-header.speaking::before { animation: pulse 1s infinite; }
-
-    @keyframes pulse {
-      0%,100% { opacity: 1; }
-      50% { opacity: 0.4; }
-    }
-
-    .vibe-thought-bubble {
-      background: #1a1a1a;
-      border-radius: 10px;
-      padding: 10px 14px;
-      font-size: 13px;
-      line-height: 1.5;
-      border-left: 3px solid #667eea;
-      animation: slideIn 0.25s ease;
-    }
-
-    @keyframes slideIn {
-      from { opacity: 0; transform: translateX(8px); }
-      to   { opacity: 1; transform: translateX(0); }
-    }
-
-    .vibe-thought-persona {
-      font-size: 10px;
-      color: #667eea;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: 3px;
-    }
-
-    .vibe-action-bubble { border-left-color: #f59e0b; }
-    .vibe-action-icon { font-size: 14px; }
-
-    /* Chat */
-    .vibe-chat {
-      height: 260px;
-      border-top: 1px solid #222;
-      display: flex;
-      flex-direction: column;
-    }
-
-    .vibe-chat-header {
-      font-size: 11px;
-      text-transform: uppercase;
-      color: #666;
-      letter-spacing: 0.5px;
-      padding: 8px 12px;
-      border-bottom: 1px solid #1a1a1a;
     }
 
     .vibe-chat-history {
@@ -252,9 +192,48 @@
       padding: 12px;
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 10px;
     }
 
+    /* Agent messages */
+    .agent-message {
+      background: #1a1a1a;
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 13px;
+      line-height: 1.5;
+      animation: slideIn 0.25s ease;
+    }
+
+    .agent-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 4px;
+    }
+
+    .agent-icon { font-size: 14px; }
+    .agent-name {
+      font-weight: 600;
+      font-size: 12px;
+    }
+    .agent-time {
+      font-size: 10px;
+      color: #555;
+      margin-left: auto;
+    }
+    .agent-text {
+      font-size: 13px;
+      line-height: 1.5;
+      color: #ccc;
+    }
+
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateX(8px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+
+    /* User messages */
     .vibe-chat-message {
       max-width: 88%;
       padding: 8px 12px;
@@ -267,9 +246,13 @@
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       color: white;
     }
-    .vibe-chat-message.ai {
-      align-self: flex-start;
-      background: #1a1a1a;
+
+    /* System messages */
+    .system-message {
+      text-align: center;
+      font-size: 11px;
+      color: #555;
+      padding: 4px 0;
     }
 
     .vibe-chat-input-area {
@@ -289,6 +272,11 @@
       font-size: 13px;
       outline: none;
       resize: none;
+    }
+
+    @keyframes pulse {
+      0%,100% { opacity: 1; }
+      50% { opacity: 0.4; }
     }
 
     /* ── Terminal ───────────────────────────────────────────────── */
@@ -400,20 +388,16 @@
       <div id="monaco-container"></div>
     </main>
 
-    <!-- Right Panel -->
+    <!-- Right Panel: Multi-Agent Chat -->
     <aside class="vibe-right-panel">
-      <div class="vibe-narration" id="narration-panel">
-        <div class="vibe-narration-header" id="narration-status">AI Thinking</div>
+      <div class="vibe-agent-status" id="narration-status">💬 AGENT CHAT</div>
+      <div id="narration-panel" style="display:none;"></div>
+      <div class="vibe-chat-history" id="chat-history">
+        <div class="system-message">👋 Describe what you want to build. Agents will narrate as they code.</div>
       </div>
-      <div class="vibe-chat">
-        <div class="vibe-chat-header">Chat</div>
-        <div class="vibe-chat-history" id="chat-history">
-          <div class="vibe-chat-message ai">Hey! Tell me what you want to build and I'll code it with live narration.</div>
-        </div>
-        <div class="vibe-chat-input-area">
-          <textarea class="vibe-chat-input" id="chat-input" rows="1" placeholder="Follow-up..."></textarea>
-          <button class="vibe-send-btn" id="chat-send-btn" style="padding:8px 14px;font-size:13px;">Send</button>
-        </div>
+      <div class="vibe-chat-input-area">
+        <textarea class="vibe-chat-input" id="chat-input" rows="1" placeholder="Ask the agents..."></textarea>
+        <button class="vibe-send-btn" id="chat-send-btn" style="padding:8px 14px;font-size:13px;">Send</button>
       </div>
     </aside>
 
