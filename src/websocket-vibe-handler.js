@@ -62,13 +62,37 @@ class VibeWebSocketHandler {
         // Execute file writes immediately on file-complete
         if (event.type === 'file-complete' && event.file && event.code) {
           try {
+            // Ensure parent directory exists
+            const path = require('path');
+            const dir = path.dirname(event.file);
+            if (dir && dir !== '.') {
+              await this.fileSystem.createDirectory(dir).catch(() => {});
+            }
+
             await this.fileSystem.writeFile(event.file, event.code);
+            console.log(`[VibeWS] Written file: ${event.file} (${event.code.length} bytes)`);
+
+            // Broadcast file creation to all clients
+            this.wsHandler.broadcast({
+              type: 'file-created',
+              data: {
+                path: event.file,
+                size: event.code.length,
+                language: this._detectLanguage(event.file),
+              },
+            });
+
+            // Also broadcast as file-changed for tree refresh
             this.wsHandler.broadcast({
               type: 'file-changed',
               data: { path: event.file, eventType: 'change' },
             });
           } catch (err) {
             console.error(`[VibeWS] Failed to write ${event.file}:`, err.message);
+            this.wsHandler.sendTo(clientId, {
+              type: 'error',
+              error: `Failed to write ${event.file}: ${err.message}`,
+            });
           }
         }
       }
@@ -89,6 +113,21 @@ class VibeWebSocketHandler {
       this.orchestrator.stopSession(session.sessionId);
     }
     this.clientSessions.delete(clientId);
+  }
+
+  /**
+   * Detect language from file extension
+   */
+  _detectLanguage(filePath) {
+    const ext = require('path').extname(filePath).toLowerCase();
+    const map = {
+      '.js': 'javascript', '.jsx': 'javascript',
+      '.ts': 'typescript', '.tsx': 'typescript',
+      '.py': 'python', '.rs': 'rust', '.go': 'go',
+      '.java': 'java', '.html': 'html', '.css': 'css',
+      '.json': 'json', '.md': 'markdown', '.sh': 'bash',
+    };
+    return map[ext] || 'plaintext';
   }
 }
 

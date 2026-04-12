@@ -110,6 +110,11 @@ class VibeOrchestrator extends EventEmitter {
         if (n) pendingNarrations.push(n);
       }, 2000);
 
+      // Line buffer for detecting file delimiters across streamed chunks
+      let lineBuffer = '';
+      let inCodeBlock = false;       // track markdown ```lang:path blocks as fallback
+      let codeBlockFile = null;
+
       try {
         for await (const chunk of coderStream) {
           if (!session.isActive) break;
@@ -125,45 +130,92 @@ class VibeOrchestrator extends EventEmitter {
             };
           }
 
-          // Emit code
+          // Process code text line-by-line for file boundary detection
           if (chunk.code) {
-            const parsed = this._parseCodeBlock(chunk.code, currentFile);
-            if (parsed.filePath && parsed.filePath !== currentFile) {
-              // Yield completed file
-              if (currentFile && currentCode) {
+            lineBuffer += chunk.code;
+            const lines = lineBuffer.split('\n');
+            lineBuffer = lines.pop(); // keep last incomplete line
+
+            for (const line of lines) {
+              const result = this._processLine(line, currentFile, inCodeBlock, codeBlockFile);
+
+              if (result.fileStart) {
+                // Yield previous file if exists
+                if (currentFile && currentCode) {
+                  yield {
+                    type: 'file-complete',
+                    file: currentFile,
+                    code: currentCode.trimEnd(),
+                    sessionId,
+                  };
+                }
+                currentFile = result.fileStart;
+                currentCode = '';
+                fileIndex++;
+                inCodeBlock = result.inCodeBlock || false;
+                codeBlockFile = result.codeBlockFile || null;
+
                 yield {
-                  type: 'file-complete',
-                  file: currentFile,
-                  code: currentCode,
+                  type: 'action-narration',
+                  action: 'create-file',
+                  text: `Creating ${currentFile}...`,
                   sessionId,
                 };
+                continue;
               }
-              currentFile = parsed.filePath;
-              currentCode = '';
-              fileIndex++;
 
-              // Action narration — "Creating file X"
-              yield {
-                type: 'action-narration',
-                action: 'create-file',
-                text: `Creating ${currentFile}...`,
-                sessionId,
-              };
+              if (result.fileEnd) {
+                if (currentFile && currentCode) {
+                  yield {
+                    type: 'file-complete',
+                    file: currentFile,
+                    code: currentCode.trimEnd(),
+                    sessionId,
+                  };
+                }
+                currentFile = null;
+                currentCode = '';
+                inCodeBlock = result.inCodeBlock || false;
+                codeBlockFile = result.codeBlockFile || null;
+                continue;
+              }
+
+              // Update code block state
+              if (result.inCodeBlock !== undefined) inCodeBlock = result.inCodeBlock;
+              if (result.codeBlockFile !== undefined) codeBlockFile = result.codeBlockFile;
+
+              if (result.codeLine !== undefined && currentFile) {
+                currentCode += result.codeLine + '\n';
+                yield {
+                  type: 'code',
+                  content: result.codeLine + '\n',
+                  file: currentFile,
+                  sessionId,
+                };
+              } else if (result.codeLine !== undefined && !currentFile) {
+                // Text outside any file — treat as thinking
+                if (result.codeLine.trim()) {
+                  thinkingBuffer += ' ' + result.codeLine;
+                }
+              }
             }
-
-            currentCode += parsed.code;
-            yield {
-              type: 'code',
-              content: parsed.code,
-              file: currentFile || `file-${fileIndex}`,
-              sessionId,
-            };
           }
 
           // Drain any pending narrations
           while (pendingNarrations.length > 0) {
             yield pendingNarrations.shift();
           }
+        }
+
+        // Process remaining lineBuffer
+        if (lineBuffer.trim() && currentFile) {
+          currentCode += lineBuffer;
+          yield {
+            type: 'code',
+            content: lineBuffer,
+            file: currentFile,
+            sessionId,
+          };
         }
       } finally {
         clearInterval(narrationInterval);
@@ -174,7 +226,7 @@ class VibeOrchestrator extends EventEmitter {
         yield {
           type: 'file-complete',
           file: currentFile,
-          code: currentCode,
+          code: currentCode.trimEnd(),
           sessionId,
         };
       }
@@ -212,16 +264,33 @@ class VibeOrchestrator extends EventEmitter {
   /**
    * Stream code generation from the coder model.
    * Extracts thinking/reasoning separately from code output.
-   * @yields {{ thinking?: string, code?: string }}
+   * Uses ===FILE:path=== / ===ENDFILE=== delimiters for reliable multi-file parsing.
+   * @yields {{ thinking?: string, code?: string, fileStart?: string, fileEnd?: boolean }}
    */
   async *_streamCoder(prompt, context, session) {
     const systemPrompt = `You are an expert full-stack developer. Given a user request, generate production-quality code.
 
-Rules:
-- Output files with clear markers: \`\`\`language:filepath
-- Think through your approach before coding
-- Generate complete, working files
-- Use modern best practices
+CRITICAL OUTPUT FORMAT RULES:
+1. Output EACH file with a clear header line: ===FILE:filepath===
+2. End each file with a line: ===ENDFILE===
+3. Include the full relative file path (e.g., ===FILE:src/components/TodoList.jsx===)
+4. Generate ALL necessary files for a working application
+5. Do NOT wrap code in markdown code blocks (\`\`\`)
+
+Example output format:
+===FILE:package.json===
+{
+  "name": "my-app",
+  "dependencies": {}
+}
+===ENDFILE===
+
+===FILE:src/App.jsx===
+import React from 'react';
+export default function App() { return <div>Hello</div>; }
+===ENDFILE===
+
+Think through your approach before outputting files.
 
 Current project context: ${JSON.stringify(context || {})}`;
 
@@ -237,14 +306,16 @@ Current project context: ${JSON.stringify(context || {})}`;
         stream: true,
         options: {
           temperature: 0.7,
-          num_ctx: 8192,
+          num_ctx: 16384,
         },
       },
       responseType: 'stream',
-      timeout: 300000,
+      timeout: 600000,
     });
 
     let buffer = '';
+    // Accumulate full text to parse file boundaries line-by-line
+    let textAccum = '';
 
     for await (const rawChunk of response.data) {
       if (!session.isActive) break;
@@ -267,19 +338,24 @@ Current project context: ${JSON.stringify(context || {})}`;
         const text = parsed.response || '';
         if (!text) continue;
 
-        // Attempt to split thinking from code.
-        // Kimi-style models may use <think>...</think> tags or reasoning_content
+        // Extract thinking from <think> tags or reasoning_content
         const thinkMatch = text.match(/<think>([\s\S]*?)<\/think>/);
         if (thinkMatch) {
           const thinking = thinkMatch[1].trim();
-          const code = text.replace(/<think>[\s\S]*?<\/think>/, '').trim();
+          const remainder = text.replace(/<think>[\s\S]*?<\/think>/, '');
           if (thinking) yield { thinking };
-          if (code) yield { code };
+          if (remainder.trim()) {
+            textAccum += remainder;
+            yield { code: remainder };
+          }
         } else if (parsed.reasoning_content) {
           yield { thinking: parsed.reasoning_content };
-          if (text) yield { code: text };
+          if (text) {
+            textAccum += text;
+            yield { code: text };
+          }
         } else {
-          // Heuristic: lines before first code block are thoughts
+          textAccum += text;
           yield { code: text };
         }
 
@@ -291,7 +367,10 @@ Current project context: ${JSON.stringify(context || {})}`;
     if (buffer.trim()) {
       try {
         const parsed = JSON.parse(buffer);
-        if (parsed.response) yield { code: parsed.response };
+        if (parsed.response) {
+          textAccum += parsed.response;
+          yield { code: parsed.response };
+        }
       } catch { /* ignore */ }
     }
   }
@@ -337,27 +416,73 @@ Respond with ONLY the spoken narration, no quotes, no prefixes.`;
   // ─── Helpers ───────────────────────────────────────────────────────
 
   /**
-   * Parse code blocks from model output.
-   * Recognises ```language:filepath patterns.
+   * Process a single line of model output to detect file boundaries.
+   * Supports two formats:
+   *   1. ===FILE:path===  /  ===ENDFILE===   (primary, prompted)
+   *   2. ```lang:path     /  ```             (fallback for markdown-style output)
+   *   3. // File: path  or  # File: path     (comment-style fallback)
+   *
+   * @param {string} line
+   * @param {string|null} currentFile
+   * @param {boolean} inCodeBlock - whether we're inside a ```...``` block
+   * @param {string|null} codeBlockFile - file path from a ``` header
+   * @returns {object} result with fileStart, fileEnd, codeLine, inCodeBlock, codeBlockFile
    */
-  _parseCodeBlock(text, currentFile) {
-    // Match: ```lang:path or ```path
-    const headerMatch = text.match(/```(\w+):([^\n]+)/);
-    if (headerMatch) {
-      const filePath = headerMatch[2].trim();
-      const code = text.replace(/```\w+:[^\n]+\n?/, '').replace(/```\s*$/, '');
-      return { filePath, code };
+  _processLine(line, currentFile, inCodeBlock, codeBlockFile) {
+    const trimmed = line.trim();
+
+    // ── Primary format: ===FILE:path=== ──
+    const fileHeaderMatch = trimmed.match(/^={2,}FILE:\s*(.+?)={2,}\s*$/);
+    if (fileHeaderMatch) {
+      return {
+        fileStart: fileHeaderMatch[1].trim(),
+        inCodeBlock: false,
+        codeBlockFile: null,
+      };
     }
 
-    // Match: // filename: path
-    const commentMatch = text.match(/\/\/\s*(?:filename|file):\s*(\S+)/i);
-    if (commentMatch) {
-      return { filePath: commentMatch[1], code: text };
+    // ── Primary format: ===ENDFILE=== ──
+    if (/^={2,}ENDFILE={2,}\s*$/.test(trimmed)) {
+      return {
+        fileEnd: true,
+        inCodeBlock: false,
+        codeBlockFile: null,
+      };
     }
 
-    // Strip closing ``` if present
-    const cleaned = text.replace(/```\s*$/, '');
-    return { filePath: currentFile, code: cleaned };
+    // ── Fallback: ```lang:filepath or ```filepath ──
+    const codeBlockStart = trimmed.match(/^```(\w+):(.+)$/);
+    if (codeBlockStart) {
+      return {
+        fileStart: codeBlockStart[2].trim(),
+        inCodeBlock: true,
+        codeBlockFile: codeBlockStart[2].trim(),
+      };
+    }
+
+    // ── Closing ``` for a code block that started a file ──
+    if (inCodeBlock && /^```\s*$/.test(trimmed)) {
+      return {
+        fileEnd: true,
+        inCodeBlock: false,
+        codeBlockFile: null,
+      };
+    }
+
+    // ── Comment-style: // File: path  or  # File: path ──
+    if (!currentFile) {
+      const commentMatch = trimmed.match(/^(?:\/\/|#)\s*(?:File|filename):\s*(\S+)/i);
+      if (commentMatch) {
+        return {
+          fileStart: commentMatch[1].trim(),
+          inCodeBlock: false,
+          codeBlockFile: null,
+        };
+      }
+    }
+
+    // ── Regular code/text line ──
+    return { codeLine: line };
   }
 }
 

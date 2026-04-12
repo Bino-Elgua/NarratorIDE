@@ -188,6 +188,10 @@ export class VibeApp {
         this._openFileInEditor(msg.path, msg.data);
         break;
 
+      case 'file-created':
+        this._onFileCreated(msg.data || msg);
+        break;
+
       case 'file-changed':
         this._onFileChanged(msg.data);
         break;
@@ -349,6 +353,13 @@ export class VibeApp {
   }
 
   // ─── File System ───────────────────────────────────────────────
+
+  _onFileCreated(data) {
+    if (data && data.path) {
+      this._addNarrationBubble('action', `📁 Created: ${data.path} (${data.size || 0} bytes)`);
+    }
+    this._refreshFileTree();
+  }
 
   _onFileChanged(data) {
     if (data && data.path) {
